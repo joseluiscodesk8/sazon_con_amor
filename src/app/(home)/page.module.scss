@@ -1,0 +1,139 @@
+.page {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.25rem 1.5rem;
+  overflow: hidden;
+}
+
+.glow {
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 520px;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(230, 126, 34, 0.22), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(192, 57, 43, 0.16), transparent 45%);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.brand {
+  position: relative;
+  display: flex;
+  gap: 0.4rem;
+  font-family: var(--font-display), serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.logo {
+  color: var(--rojo);
+}
+
+.logoAlt {
+  color: var(--naranja);
+}
+
+.hero {
+  position: relative;
+  text-align: center;
+  margin-top: clamp(2rem, 8vh, 5rem);
+  max-width: 640px;
+}
+
+.kicker {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--verde);
+  background: var(--verde-claro);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  margin-bottom: 1.1rem;
+}
+
+.title {
+  font-size: clamp(2.1rem, 6vw, 3.4rem);
+  font-weight: 700;
+  color: var(--carbon);
+}
+
+.subtitle {
+  margin-top: 0.85rem;
+  color: var(--gris);
+  font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+}
+
+.options {
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  margin-top: clamp(2rem, 6vh, 3.5rem);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.75rem;
+  background: var(--blanco);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: var(--naranja);
+    box-shadow: 0 18px 40px rgba(43, 35, 32, 0.14);
+
+    .cta {
+      color: var(--rojo);
+    }
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    color: var(--carbon);
+  }
+
+  p {
+    color: var(--gris);
+    font-size: 0.95rem;
+  }
+}
+
+.icon {
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+
+.cta {
+  margin-top: 0.75rem;
+  font-weight: 700;
+  color: var(--verde);
+  transition: color 0.18s ease;
+}
+
+.footer {
+  position: relative;
+  margin-top: auto;
+  padding-top: 2.5rem;
+  color: var(--gris);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .options {
+    grid-template-columns: 1fr;
+  }
+}
