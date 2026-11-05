@@ -11,12 +11,12 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
+      <aside className={styles.sidebar} aria-label="Panel de administración">
         <Link href="/admin" className={styles.brand}>
           Sazón <span>con Amor</span>
         </Link>
 
-        <nav className={styles.nav}>
+        <nav className={styles.nav} aria-label="Secciones del panel">
           <Link href="/admin">Pedidos</Link>
           <Link href="/admin/menu">Menú</Link>
           <Link href="/admin/lugares">Lugares</Link>
@@ -34,7 +34,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         </div>
       </aside>
 
-      <main className={styles.content}>{children}</main>
+      <main id="contenido" tabIndex={-1} className={styles.content}>
+        {children}
+      </main>
     </div>
   );
 }

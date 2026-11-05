@@ -12,7 +12,7 @@ export default function RegistroPage() {
   );
 
   return (
-    <main className={styles.wrap}>
+    <main id="contenido" tabIndex={-1} className={styles.wrap}>
       <form action={formAction} className={styles.card}>
         <div className={styles.brand}>
           <h1>Crear administrador</h1>
@@ -56,7 +56,11 @@ export default function RegistroPage() {
           />
         </label>
 
-        {state.error ? <p className={styles.error}>{state.error}</p> : null}
+        {state.error ? (
+          <p className={styles.error} role="alert">
+            {state.error}
+          </p>
+        ) : null}
 
         <button type="submit" className={styles.submit} disabled={pending}>
           {pending ? "Creando…" : "Crear administrador"}

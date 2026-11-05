@@ -254,15 +254,26 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
         </label>
       </div>
 
-      <div className={styles.tabs}>
+      <div className={styles.tabs} role="group" aria-label="Filtrar pedidos">
         {(["todos", "domicilio", "restaurante"] as Filtro[]).map((t) => (
           <button
             key={t}
             type="button"
             className={`${styles.tab} ${filtro === t ? styles.tabActive : ""}`}
             onClick={() => setFiltro(t)}
+            aria-pressed={filtro === t}
           >
-            {t === "todos" ? "Todos" : t === "domicilio" ? "🛵 Domicilio" : "🍽️ Restaurante"}
+            {t === "todos" ? (
+              "Todos"
+            ) : t === "domicilio" ? (
+              <>
+                <span aria-hidden>🛵</span> Domicilio
+              </>
+            ) : (
+              <>
+                <span aria-hidden>🍽️</span> Restaurante
+              </>
+            )}
             <span className={styles.tabCount}>{contar(t)}</span>
           </button>
         ))}

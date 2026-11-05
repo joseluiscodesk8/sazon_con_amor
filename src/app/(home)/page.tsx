@@ -1,9 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import JsonLd from "@/components/JsonLd";
+import {
+  DESCRIPCION_SITIO,
+  TITULO_INICIO,
+  crearMetadata,
+  esquemaRestaurante,
+} from "@/lib/seo";
 import styles from "./page.module.scss";
+
+export const metadata: Metadata = crearMetadata({
+  titulo: TITULO_INICIO,
+  descripcion: DESCRIPCION_SITIO,
+  ruta: "/",
+});
 
 export default function Home() {
   return (
-    <main className={styles.page}>
+    <main id="contenido" tabIndex={-1} className={styles.page}>
+      <JsonLd datos={esquemaRestaurante()} />
       <div className={styles.glow} aria-hidden />
 
       <header className={styles.brand}>

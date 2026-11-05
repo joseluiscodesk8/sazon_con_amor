@@ -15,7 +15,7 @@ export default function FormularioLogin() {
   const sinAcceso = searchParams.get("error") === "sin-acceso";
 
   return (
-    <main className={styles.wrap}>
+    <main id="contenido" tabIndex={-1} className={styles.wrap}>
       <form action={formAction} className={styles.card}>
         <div className={styles.brand}>
           <h1>Sazón con Amor</h1>
@@ -45,11 +45,15 @@ export default function FormularioLogin() {
         </label>
 
         {sinAcceso ? (
-          <p className={styles.error}>
+          <p className={styles.error} role="alert">
             Esa cuenta no tiene acceso de administrador.
           </p>
         ) : null}
-        {state.error ? <p className={styles.error}>{state.error}</p> : null}
+        {state.error ? (
+          <p className={styles.error} role="alert">
+            {state.error}
+          </p>
+        ) : null}
 
         <button type="submit" className={styles.submit} disabled={pending}>
           {pending ? "Entrando…" : "Entrar"}

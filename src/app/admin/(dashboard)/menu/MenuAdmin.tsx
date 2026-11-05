@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
+import Dialogo from "@/components/Dialogo";
 import { useRouter } from "next/navigation";
 import { formatearPrecio } from "@/lib/format";
 import { comprimirImagen } from "@/lib/imagen";
@@ -328,7 +329,11 @@ export default function MenuAdmin({
         </div>
       </div>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {categorias.length === 0 ? (
         <p className={styles.empty}>
@@ -660,17 +665,22 @@ function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const tituloId = useId();
+
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHead}>
-          <h2>{titulo}</h2>
-          <button type="button" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-        {children}
+    <Dialogo
+      etiquetadoPor={tituloId}
+      onCerrar={onClose}
+      overlayClassName={styles.overlay}
+      panelClassName={styles.modal}
+    >
+      <div className={styles.modalHead}>
+        <h2 id={tituloId}>{titulo}</h2>
+        <button type="button" onClick={onClose} aria-label="Cerrar">
+          ✕
+        </button>
       </div>
-    </div>
+      {children}
+    </Dialogo>
   );
 }

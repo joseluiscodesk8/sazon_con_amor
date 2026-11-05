@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import Dialogo from "@/components/Dialogo";
 import { formatearPrecio } from "@/lib/format";
 import {
   ESTADO_LABEL,
@@ -163,6 +164,7 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
   const [verSeguimiento, setVerSeguimiento] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [refresco, setRefresco] = useState(0);
+  const idempotenciaRef = useRef<string | null>(null);
 
   // Prellenado único desde localStorage (sistema externo). Se desactiva la
   // regla porque este setState es intencional y ocurre una sola vez al montar.
@@ -208,6 +210,10 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
     }
   }, [esDomicilio]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    idempotenciaRef.current = null;
+  }, [carrito, datos, mesa, notas]);
 
   const token = pedidoGuardado?.token ?? null;
   const estado = seguimiento?.estado ?? null;
@@ -539,6 +545,9 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
         return;
       }
 
+      const idempotencia = idempotenciaRef.current ?? crypto.randomUUID();
+      idempotenciaRef.current = idempotencia;
+
       const res = await crearPedido({
         modo,
         nombre: datos.nombre,
@@ -547,6 +556,7 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
         lugar: datos.lugar,
         mesa: Number(mesa) || null,
         notas,
+        idempotencia,
         items,
       });
 
@@ -554,6 +564,8 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
         setError(res.error);
         return;
       }
+
+      idempotenciaRef.current = null;
 
       if (esDomicilio) {
         if (guardarDatos) guardarDatosLocal();
@@ -583,17 +595,28 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
         <div className={styles.headerBrand}>
           <span className={styles.brand}>Sazón con Amor</span>
           <span className={styles.modoTag}>
-            {esDomicilio ? "🛵 A domicilio" : "🍽️ En el restaurante"}
+            <span aria-hidden>{esDomicilio ? "🛵" : "🍽️"}</span>{" "}
+            {esDomicilio ? "A domicilio" : "En el restaurante"}
           </span>
         </div>
         <button
           type="button"
           className={styles.cartButton}
           onClick={() => setCarritoAbierto(true)}
+          aria-label={
+            cantidadTotal > 0
+              ? `Abrir pedido, ${cantidadTotal} productos`
+              : "Abrir pedido"
+          }
+          aria-haspopup="dialog"
+          aria-expanded={carritoAbierto}
+          aria-controls="carrito-dialogo"
         >
-          🛒
+          <span aria-hidden>🛒</span>
           {cantidadTotal > 0 ? (
-            <span className={styles.cartCount}>{cantidadTotal}</span>
+            <span className={styles.cartCount} aria-hidden>
+              {cantidadTotal}
+            </span>
           ) : null}
         </button>
       </header>
@@ -610,10 +633,20 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                 Editable por {formatearCuenta(segundos)}
               </span>
             ) : null}
-            {aviso ? <span className={styles.aviso}>{aviso}</span> : null}
+            {aviso ? (
+              <span className={styles.aviso} role="status">
+                {aviso}
+              </span>
+            ) : null}
           </div>
           <div className={styles.pedidoEnCursoAcciones}>
-            <button type="button" onClick={() => setVerSeguimiento(true)}>
+            <button
+              type="button"
+              onClick={() => setVerSeguimiento(true)}
+              aria-haspopup="dialog"
+              aria-expanded={verSeguimiento}
+              aria-controls="seguimiento-dialogo"
+            >
               Ver seguimiento
             </button>
             {editando ? (
@@ -636,7 +669,10 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
         </div>
       ) : null}
 
-      <main className={styles.menu}>
+      <main id="contenido" tabIndex={-1} className={styles.menu}>
+        <h1 className="sr-only">
+          {esDomicilio ? "Menú para pedir a domicilio" : "Menú del restaurante"}
+        </h1>
         {menu.length === 0 ? (
           <p className={styles.empty}>
             El menú aún no está disponible. Vuelve pronto 💛
@@ -700,7 +736,11 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                                 <span className={styles.cardGrupoTitulo}>
                                   {sub.nombre}
                                 </span>
-                                <div className={styles.cardOpciones}>
+                                <div
+                                  className={styles.cardOpciones}
+                                  role="group"
+                                  aria-label={`${plato.nombre}: ${sub.nombre}`}
+                                >
                                   {sub.opciones.map((opcion) => {
                                     const marcado =
                                       seleccion[sub.id] === opcion.id;
@@ -739,7 +779,11 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                             <span className={styles.cardGrupoTitulo}>
                               Adiciones
                             </span>
-                            <div className={styles.cardAdiciones}>
+                            <div
+                              className={styles.cardAdiciones}
+                              role="group"
+                              aria-label={`Adiciones para ${plato.nombre}`}
+                            >
                               {plato.adiciones.map((adicion) => {
                                 const activa = adicionesActuales.some(
                                   (a) => a.id === adicion.id,
@@ -780,7 +824,7 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                                 <button
                                   type="button"
                                   onClick={() => quitar(clave)}
-                                  aria-label="Quitar uno"
+                                  aria-label={`Quitar uno de ${plato.nombre}`}
                                 >
                                   −
                                 </button>
@@ -794,7 +838,7 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                                       adicionesActuales,
                                     )
                                   }
-                                  aria-label="Agregar uno"
+                                  aria-label={`Agregar uno de ${plato.nombre}`}
                                 >
                                   +
                                 </button>
@@ -803,6 +847,7 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
                               <button
                                 type="button"
                                 className={styles.add}
+                                aria-label={`Agregar ${plato.nombre} al pedido`}
                                 onClick={() =>
                                   agregarLinea(
                                     plato.id,
@@ -831,6 +876,9 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
           type="button"
           className={styles.cartBar}
           onClick={() => setCarritoAbierto(true)}
+          aria-haspopup="dialog"
+          aria-expanded={carritoAbierto}
+          aria-controls="carrito-dialogo"
         >
           <span>Ver pedido ({cantidadTotal})</span>
           <span>{formatearPrecio(total)}</span>
@@ -838,394 +886,440 @@ export default function MenuCliente({ modo, menu, lugares = [] }: Props) {
       ) : null}
 
       {carritoAbierto ? (
-        <div className={styles.overlay} onClick={() => setCarritoAbierto(false)}>
-          <aside
-            className={styles.drawer}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.drawerHead}>
-              <h2>{editando ? "Editar pedido" : "Tu pedido"}</h2>
-              <button
-                type="button"
-                onClick={() => setCarritoAbierto(false)}
-                aria-label="Cerrar"
-              >
-                ✕
-              </button>
-            </div>
+        <Dialogo
+          id="carrito-dialogo"
+          etiquetadoPor="carrito-titulo"
+          onCerrar={() => setCarritoAbierto(false)}
+          overlayClassName={styles.overlay}
+          panelClassName={styles.drawer}
+        >
+          <div className={styles.drawerHead}>
+            <h2 id="carrito-titulo">
+              {editando ? "Editar pedido" : "Tu pedido"}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setCarritoAbierto(false)}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
 
-            <div className={styles.drawerBody}>
-              {lineas.length === 0 ? (
-                <p className={styles.emptyCart}>Tu carrito está vacío.</p>
-              ) : (
-                <ul className={styles.itemList}>
-                  {lineas.map((linea) => {
-                    const plato = platosPorId.get(linea.platoId);
-                    if (!plato) return null;
-                    const extras = sumarAdiciones(linea.adiciones);
-                    return (
-                      <li key={linea.key} className={styles.item}>
-                        <div>
-                          <span className={styles.itemName}>
-                            {plato.nombre}
+          <div className={styles.drawerBody}>
+            {lineas.length === 0 ? (
+              <p className={styles.emptyCart}>Tu carrito está vacío.</p>
+            ) : (
+              <ul className={styles.itemList}>
+                {lineas.map((linea) => {
+                  const plato = platosPorId.get(linea.platoId);
+                  if (!plato) return null;
+                  const extras = sumarAdiciones(linea.adiciones);
+                  return (
+                    <li key={linea.key} className={styles.item}>
+                      <div>
+                        <span className={styles.itemName}>
+                          {plato.nombre}
+                        </span>
+                        {linea.opciones.length > 0 ? (
+                          <span className={styles.itemOpciones}>
+                            {linea.opciones
+                              .map((o) => `${o.subcategoria}: ${o.opcion}`)
+                              .join(" · ")}
                           </span>
-                          {linea.opciones.length > 0 ? (
-                            <span className={styles.itemOpciones}>
-                              {linea.opciones
-                                .map((o) => `${o.subcategoria}: ${o.opcion}`)
-                                .join(" · ")}
-                            </span>
-                          ) : null}
-                          {linea.adiciones.length > 0 ? (
-                            <span className={styles.itemAdiciones}>
-                              Adiciones:{" "}
-                              {linea.adiciones
-                                .map((a) => a.nombre)
-                                .join(", ")}
-                            </span>
-                          ) : null}
-                          <span className={styles.itemPrice}>
-                            {formatearPrecio(plato.precio + extras)}
+                        ) : null}
+                        {linea.adiciones.length > 0 ? (
+                          <span className={styles.itemAdiciones}>
+                            Adiciones:{" "}
+                            {linea.adiciones
+                              .map((a) => a.nombre)
+                              .join(", ")}
                           </span>
-                        </div>
-                        <div className={styles.stepper}>
-                          <button
-                            type="button"
-                            onClick={() => quitar(linea.key)}
-                            aria-label="Quitar uno"
-                          >
-                            −
-                          </button>
-                          <span>{linea.cantidad}</span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              agregarLinea(
-                                plato.id,
-                                linea.opciones,
-                                linea.adiciones,
-                              )
-                            }
-                            aria-label="Agregar uno"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              <form
-                className={styles.form}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  enviar();
-                }}
-              >
-                <label className={styles.field}>
-                  <span>Tu nombre *</span>
-                  <input
-                    name="nombre"
-                    required
-                    placeholder="Nombre"
-                    value={datos.nombre}
-                    onChange={(event) =>
-                      setDatos((d) => ({ ...d, nombre: event.target.value }))
-                    }
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>Teléfono</span>
-                  <input
-                    name="telefono"
-                    inputMode="tel"
-                    placeholder="300 000 0000"
-                    value={datos.telefono}
-                    onChange={(event) =>
-                      setDatos((d) => ({ ...d, telefono: event.target.value }))
-                    }
-                  />
-                </label>
-
-                {esDomicilio ? (
-                  <div className={styles.field}>
-                    <span>Dirección *</span>
-                    <div className={styles.autocomplete}>
-                      <input
-                        name="direccion"
-                        required
-                        autoComplete="off"
-                        aria-label="Dirección"
-                        placeholder="Escribe tu dirección o busca un lugar (ej. Casa)"
-                        value={datos.direccion}
-                        onFocus={() => setLugaresAbierto(true)}
-                        onBlur={() => setLugaresAbierto(false)}
-                        onChange={(event) => {
-                          setDatos((d) => ({
-                            ...d,
-                            direccion: event.target.value,
-                            lugar: "",
-                          }));
-                          setLugaresAbierto(true);
-                        }}
-                      />
-                      {lugaresAbierto && lugaresFiltrados.length > 0 ? (
-                        <ul className={styles.sugerencias}>
-                          {lugaresFiltrados.map((lugar) => (
-                            <li key={lugar.id}>
-                              <button
-                                type="button"
-                                onPointerDown={(event) => {
-                                  event.preventDefault();
-                                  elegirLugar(lugar);
-                                }}
-                              >
-                                <span className={styles.sugerenciaNombre}>
-                                  {lugar.nombre}
-                                </span>
-                                <span className={styles.sugerenciaDireccion}>
-                                  {lugar.direccion}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                    {datos.lugar ? (
-                      <span className={styles.lugarElegido}>
-                        Lugar: <strong>{datos.lugar}</strong>
+                        ) : null}
+                        <span className={styles.itemPrice}>
+                          {formatearPrecio(plato.precio + extras)}
+                        </span>
+                      </div>
+                      <div className={styles.stepper}>
                         <button
                           type="button"
-                          onClick={() => setDatos((d) => ({ ...d, lugar: "" }))}
+                          onClick={() => quitar(linea.key)}
+                          aria-label={`Quitar uno de ${plato.nombre}`}
                         >
-                          Quitar
+                          −
                         </button>
-                      </span>
+                        <span>{linea.cantidad}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            agregarLinea(
+                              plato.id,
+                              linea.opciones,
+                              linea.adiciones,
+                            )
+                          }
+                          aria-label={`Agregar uno de ${plato.nombre}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <form
+              className={styles.form}
+              aria-label="Datos del pedido"
+              onSubmit={(event) => {
+                event.preventDefault();
+                enviar();
+              }}
+            >
+              <label className={styles.field}>
+                <span>Tu nombre *</span>
+                <input
+                  name="nombre"
+                  required
+                  maxLength={80}
+                  autoComplete="name"
+                  placeholder="Nombre"
+                  value={datos.nombre}
+                  onChange={(event) =>
+                    setDatos((d) => ({ ...d, nombre: event.target.value }))
+                  }
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Teléfono</span>
+                <input
+                  name="telefono"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={30}
+                  autoComplete="tel"
+                  placeholder="300 000 0000"
+                  value={datos.telefono}
+                  onChange={(event) =>
+                    setDatos((d) => ({ ...d, telefono: event.target.value }))
+                  }
+                />
+              </label>
+
+              {esDomicilio ? (
+                <div className={styles.field}>
+                  <span>Dirección *</span>
+                  <div className={styles.autocomplete}>
+                    <input
+                      name="direccion"
+                      required
+                      maxLength={200}
+                      autoComplete="off"
+                      aria-label="Dirección"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={
+                        lugaresAbierto && lugaresFiltrados.length > 0
+                      }
+                      aria-controls="sugerencias-lugares"
+                      placeholder="Escribe tu dirección o busca un lugar (ej. Casa)"
+                      value={datos.direccion}
+                      onFocus={() => setLugaresAbierto(true)}
+                      onBlur={(event) => {
+                        const siguiente = event.relatedTarget;
+                        if (
+                          !(siguiente instanceof Node) ||
+                          !event.currentTarget.parentElement?.contains(
+                            siguiente,
+                          )
+                        ) {
+                          setLugaresAbierto(false);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setLugaresAbierto(false);
+                        }
+                      }}
+                      onChange={(event) => {
+                        setDatos((d) => ({
+                          ...d,
+                          direccion: event.target.value,
+                          lugar: "",
+                        }));
+                        setLugaresAbierto(true);
+                      }}
+                    />
+                    {lugaresAbierto && lugaresFiltrados.length > 0 ? (
+                      <ul
+                        id="sugerencias-lugares"
+                        className={styles.sugerencias}
+                      >
+                        {lugaresFiltrados.map((lugar) => (
+                          <li key={lugar.id}>
+                            <button
+                              type="button"
+                              aria-label={`Elegir ${lugar.nombre}: ${lugar.direccion}`}
+                              onClick={() => elegirLugar(lugar)}
+                            >
+                              <span className={styles.sugerenciaNombre}>
+                                {lugar.nombre}
+                              </span>
+                              <span className={styles.sugerenciaDireccion}>
+                                {lugar.direccion}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
                   </div>
-                ) : (
-                  <label className={styles.field}>
-                    <span>Mesa *</span>
-                    <input
-                      name="mesa"
-                      type="number"
-                      min={1}
-                      max={60}
-                      required
-                      placeholder="Número de mesa"
-                      value={mesa}
-                      onChange={(event) => setMesa(event.target.value)}
-                    />
-                  </label>
-                )}
-
+                  {datos.lugar ? (
+                    <span className={styles.lugarElegido}>
+                      Lugar: <strong>{datos.lugar}</strong>
+                      <button
+                        type="button"
+                        onClick={() => setDatos((d) => ({ ...d, lugar: "" }))}
+                      >
+                        Quitar
+                      </button>
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
                 <label className={styles.field}>
-                  <span>Notas (opcional)</span>
-                  <textarea
-                    name="notas"
-                    rows={2}
-                    placeholder="Sin cebolla, término medio, etc."
-                    value={notas}
-                    onChange={(event) => setNotas(event.target.value)}
+                  <span>Mesa *</span>
+                  <input
+                    name="mesa"
+                    type="number"
+                    min={1}
+                    max={60}
+                    required
+                    placeholder="Número de mesa"
+                    value={mesa}
+                    onChange={(event) => setMesa(event.target.value)}
                   />
                 </label>
+              )}
 
-                {esDomicilio ? (
-                  <div className={styles.guardarDatos}>
-                    <label className={styles.check}>
-                      <input
-                        type="checkbox"
-                        checked={guardarDatos}
-                        onChange={(event) =>
-                          setGuardarDatos(event.target.checked)
-                        }
-                      />
-                      <span>Guardar mis datos para la próxima vez</span>
-                    </label>
-                    {tieneDatosGuardados ? (
-                      <button
-                        type="button"
-                        className={styles.limpiarDatos}
-                        onClick={borrarDatosLocal}
-                      >
-                        Borrar datos guardados
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+              <label className={styles.field}>
+                <span>Notas (opcional)</span>
+                <textarea
+                  name="notas"
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Sin cebolla, término medio, etc."
+                  value={notas}
+                  onChange={(event) => setNotas(event.target.value)}
+                />
+              </label>
 
-                {error ? <p className={styles.error}>{error}</p> : null}
-
-                <div className={styles.totalRow}>
-                  <span>Total</span>
-                  <strong>{formatearPrecio(total)}</strong>
+              {esDomicilio ? (
+                <div className={styles.guardarDatos}>
+                  <label className={styles.check}>
+                    <input
+                      type="checkbox"
+                      checked={guardarDatos}
+                      onChange={(event) =>
+                        setGuardarDatos(event.target.checked)
+                      }
+                    />
+                    <span>Guardar mis datos para la próxima vez</span>
+                  </label>
+                  {tieneDatosGuardados ? (
+                    <button
+                      type="button"
+                      className={styles.limpiarDatos}
+                      onClick={borrarDatosLocal}
+                    >
+                      Borrar datos guardados
+                    </button>
+                  ) : null}
                 </div>
+              ) : null}
 
-                <button
-                  type="submit"
-                  className={styles.submit}
-                  disabled={pending || lineas.length === 0}
-                >
-                  {pending
-                    ? "Guardando…"
-                    : editando
-                      ? "Guardar cambios"
-                      : esDomicilio
-                        ? "Enviar pedido a domicilio"
-                        : "Enviar pedido"}
-                </button>
-                <p className={styles.note}>
-                  {esDomicilio
-                    ? "Pagas en efectivo o con tarjeta al recibir."
-                    : "Pagas en caja al terminar."}
+              {error ? (
+                <p className={styles.error} role="alert">
+                  {error}
                 </p>
-              </form>
-            </div>
-          </aside>
-        </div>
-      ) : null}
-
-      {verSeguimiento && pedidoGuardado ? (
-        <div
-          className={styles.overlay}
-          onClick={() => setVerSeguimiento(false)}
-        >
-          <div
-            className={styles.seguimiento}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.drawerHead}>
-              <h2>Tu pedido</h2>
-              <button
-                type="button"
-                onClick={() => setVerSeguimiento(false)}
-                aria-label="Cerrar"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className={styles.seguimientoBody}>
-              {estado === "cancelado" ? (
-                <p className={styles.cancelado}>
-                  El pedido fue cancelado. Si tienes dudas, contáctanos.
-                </p>
-              ) : (
-                <ol className={styles.pasos}>
-                  {PASOS_DOMICILIO.map((paso, indice) => {
-                    const hecho = indiceEstado > indice;
-                    const actual = indiceEstado === indice;
-                    return (
-                      <li
-                        key={paso}
-                        className={`${styles.paso} ${
-                          hecho ? styles.pasoHecho : ""
-                        } ${actual ? styles.pasoActual : ""}`}
-                      >
-                        <span className={styles.pasoPunto}>
-                          {hecho ? "✓" : indice + 1}
-                        </span>
-                        <span>{ESTADO_LABEL[paso]}</span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-
-              {estado === "nuevo" ? (
-                segundos > 0 ? (
-                  <div className={styles.cuentaBox}>
-                    <span>Tiempo para modificar</span>
-                    <strong>{formatearCuenta(segundos)}</strong>
-                    {puedeEditar ? (
-                      <button
-                        type="button"
-                        className={styles.submit}
-                        onClick={empezarEdicion}
-                      >
-                        Editar pedido
-                      </button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className={styles.cuentaFin}>
-                    El tiempo para modificar el pedido terminó.
-                  </p>
-                )
-              ) : (
-                <p className={styles.seguimientoTexto}>
-                  {textoEstado(estado, segundos)}
-                </p>
-              )}
-
-              {aviso ? <p className={styles.aviso}>{aviso}</p> : null}
+              ) : null}
 
               <div className={styles.totalRow}>
                 <span>Total</span>
-                <strong>
-                  {formatearPrecio(seguimiento?.total ?? total)}
-                </strong>
+                <strong>{formatearPrecio(total)}</strong>
               </div>
 
-              <p className={styles.note}>
-                Actualizamos el estado automáticamente.
-              </p>
-
               <button
-                type="button"
-                className={styles.cerrarSeguimiento}
-                onClick={() => setVerSeguimiento(false)}
+                type="submit"
+                className={styles.submit}
+                disabled={pending || lineas.length === 0}
               >
-                Cerrar
+                {pending
+                  ? "Guardando…"
+                  : editando
+                    ? "Guardar cambios"
+                    : esDomicilio
+                      ? "Enviar pedido a domicilio"
+                      : "Enviar pedido"}
               </button>
-            </div>
+              <p className={styles.note}>
+                {esDomicilio
+                  ? "Pagas en efectivo o con tarjeta al recibir."
+                  : "Pagas en caja al terminar."}
+              </p>
+            </form>
           </div>
-        </div>
+        </Dialogo>
+      ) : null}
+
+      {verSeguimiento && pedidoGuardado ? (
+        <Dialogo
+          id="seguimiento-dialogo"
+          etiquetadoPor="seguimiento-titulo"
+          onCerrar={() => setVerSeguimiento(false)}
+          overlayClassName={styles.overlay}
+          panelClassName={styles.seguimiento}
+        >
+          <div className={styles.drawerHead}>
+            <h2 id="seguimiento-titulo">Tu pedido</h2>
+            <button
+              type="button"
+              onClick={() => setVerSeguimiento(false)}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className={styles.seguimientoBody}>
+            {estado === "cancelado" ? (
+              <p className={styles.cancelado}>
+                El pedido fue cancelado. Si tienes dudas, contáctanos.
+              </p>
+            ) : (
+              <ol className={styles.pasos}>
+                {PASOS_DOMICILIO.map((paso, indice) => {
+                  const hecho = indiceEstado > indice;
+                  const actual = indiceEstado === indice;
+                  return (
+                    <li
+                      key={paso}
+                      className={`${styles.paso} ${
+                        hecho ? styles.pasoHecho : ""
+                      } ${actual ? styles.pasoActual : ""}`}
+                    >
+                      <span className={styles.pasoPunto}>
+                        {hecho ? "✓" : indice + 1}
+                      </span>
+                      <span>{ESTADO_LABEL[paso]}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+
+            {estado === "nuevo" ? (
+              segundos > 0 ? (
+                <div className={styles.cuentaBox}>
+                  <span>Tiempo para modificar</span>
+                  <strong>{formatearCuenta(segundos)}</strong>
+                  {puedeEditar ? (
+                    <button
+                      type="button"
+                      className={styles.submit}
+                      onClick={empezarEdicion}
+                    >
+                      Editar pedido
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className={styles.cuentaFin}>
+                  El tiempo para modificar el pedido terminó.
+                </p>
+              )
+            ) : (
+              <p className={styles.seguimientoTexto}>
+                {textoEstado(estado, segundos)}
+              </p>
+            )}
+
+            {aviso ? (
+              <p className={styles.aviso} role="status">
+                {aviso}
+              </p>
+            ) : null}
+
+            <div className={styles.totalRow}>
+              <span>Total</span>
+              <strong>
+                {formatearPrecio(seguimiento?.total ?? total)}
+              </strong>
+            </div>
+
+            <p className={styles.note}>
+              Actualizamos el estado automáticamente.
+            </p>
+
+            <button
+              type="button"
+              className={styles.cerrarSeguimiento}
+              onClick={() => setVerSeguimiento(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </Dialogo>
       ) : null}
 
       {resultado ? (
-        <div className={styles.overlay}>
-          <div className={styles.success}>
-            <span className={styles.successIcon}>🎉</span>
-            <h2>
-              {resultado.editado ? "¡Pedido actualizado!" : "¡Pedido recibido!"}
-            </h2>
-            <p className={styles.successTotal}>
-              Total: <strong>{formatearPrecio(resultado.total)}</strong>
-            </p>
-            <p className={styles.note}>
-              {resultado.editado
-                ? "Guardamos los cambios de tu pedido."
-                : esDomicilio
-                  ? "Estamos preparando tu pedido. Te lo llevamos pronto."
-                  : "Estamos preparando tu pedido, lo llevamos a tu mesa."}
-            </p>
-            {esDomicilio ? (
-              <button
-                type="button"
-                className={styles.successButton}
-                onClick={() => {
-                  setResultado(null);
-                  setVerSeguimiento(true);
-                }}
-              >
-                Ver mi pedido
-              </button>
-            ) : null}
-            <Link
-              href="/"
-              className={
-                esDomicilio ? styles.successLink : styles.successButton
-              }
+        <Dialogo
+          id="resultado-dialogo"
+          etiquetadoPor="resultado-titulo"
+          overlayClassName={styles.overlay}
+          panelClassName={styles.success}
+          cerrarAlHacerClicFuera={false}
+          cerrarConEscape={false}
+        >
+          <span className={styles.successIcon} aria-hidden>
+            🎉
+          </span>
+          <h2 id="resultado-titulo">
+            {resultado.editado ? "¡Pedido actualizado!" : "¡Pedido recibido!"}
+          </h2>
+          <p className={styles.successTotal}>
+            Total: <strong>{formatearPrecio(resultado.total)}</strong>
+          </p>
+          <p className={styles.note}>
+            {resultado.editado
+              ? "Guardamos los cambios de tu pedido."
+              : esDomicilio
+                ? "Estamos preparando tu pedido. Te lo llevamos pronto."
+                : "Estamos preparando tu pedido, lo llevamos a tu mesa."}
+          </p>
+          {esDomicilio ? (
+            <button
+              type="button"
+              className={styles.successButton}
+              onClick={() => {
+                setResultado(null);
+                setVerSeguimiento(true);
+              }}
             >
-              Volver al inicio
-            </Link>
-          </div>
-        </div>
+              Ver mi pedido
+            </button>
+          ) : null}
+          <Link
+            href="/"
+            className={
+              esDomicilio ? styles.successLink : styles.successButton
+            }
+          >
+            Volver al inicio
+          </Link>
+        </Dialogo>
       ) : null}
     </div>
   );

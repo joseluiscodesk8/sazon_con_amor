@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import FormularioLogin from "./FormularioLogin";
 
 export const metadata: Metadata = {
-  title: "Acceso — Sazón con Amor",
+  title: "Acceso",
 };
 
 export default function LoginPage() {

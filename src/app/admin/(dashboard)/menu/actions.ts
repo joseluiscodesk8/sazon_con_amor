@@ -1,6 +1,7 @@
 "use server";
 
 import { updateTag } from "next/cache";
+import { detectarImagen } from "@/lib/imagen-servidor";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { esNombreDeSubcategoria } from "@/lib/subcategorias";
@@ -250,21 +251,24 @@ export async function subirImagenPlato(
     return { ok: false, error: "Selecciona una imagen." };
   }
 
-  if (!archivo.type.startsWith("image/")) {
-    return { ok: false, error: "El archivo debe ser una imagen." };
-  }
-
   if (archivo.size > 4 * 1024 * 1024) {
     return { ok: false, error: "La imagen no puede pesar más de 4 MB." };
   }
 
-  const extension = archivo.name.split(".").pop()?.toLowerCase() || "jpg";
-  const ruta = `${crypto.randomUUID()}.${extension}`;
+  const imagen = await detectarImagen(archivo);
+  if (!imagen) {
+    return {
+      ok: false,
+      error: "Formato no permitido. Usa JPG, PNG, WebP o GIF.",
+    };
+  }
+
+  const ruta = `${crypto.randomUUID()}.${imagen.extension}`;
 
   const supabase = await createClient();
   const { error } = await supabase.storage
     .from("platos")
-    .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+    .upload(ruta, archivo, { contentType: imagen.mime, upsert: false });
 
   if (error) {
     console.error("[subirImagenPlato]", error);

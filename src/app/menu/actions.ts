@@ -1,6 +1,8 @@
 "use server";
 
-import { createPublicClient } from "@/lib/supabase/public";
+import { createHash, randomUUID } from "node:crypto";
+import { headers } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { EstadoPedido } from "@/lib/pedidos";
 
 export type CrearPedidoInput = {
@@ -11,6 +13,7 @@ export type CrearPedidoInput = {
   lugar?: string;
   mesa?: number | null;
   notas?: string;
+  idempotencia?: string;
   items: {
     plato_id: string;
     cantidad: number;
@@ -52,6 +55,48 @@ export type EstadoPedidoResult =
     }
   | { ok: false; error: string };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type ClientePedidos = ReturnType<typeof createAdminClient>;
+
+async function hashIp() {
+  const encabezados = await headers();
+  const ip =
+    encabezados.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    encabezados.get("x-real-ip") ||
+    "local";
+
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
+function hashTelefono(telefono: string) {
+  const digitos = telefono.replace(/\D/g, "");
+  if (digitos.length < 7) return null;
+
+  return createHash("sha256").update(digitos).digest("hex").slice(0, 32);
+}
+
+async function consumirLimite(
+  supabase: ClientePedidos,
+  clave: string,
+  limite: number,
+  ventanaSegundos: number,
+) {
+  const { data, error } = await supabase.rpc("consumir_limite", {
+    p_clave: clave,
+    p_limite: limite,
+    p_ventana_segundos: ventanaSegundos,
+  });
+
+  if (error) {
+    console.error("[consumirLimite]", error);
+    return false;
+  }
+
+  return data === true;
+}
+
 export async function crearPedido(
   input: CrearPedidoInput,
 ): Promise<CrearPedidoResult> {
@@ -69,13 +114,43 @@ export async function crearPedido(
     return { ok: false, error: "Selecciona el número de mesa." };
   }
 
-  const supabase = createPublicClient();
+  if (items.length > 50) {
+    return { ok: false, error: "El pedido tiene demasiados ítems." };
+  }
+
+  const idempotencia = input.idempotencia?.trim() || randomUUID();
+  if (!UUID_RE.test(idempotencia)) {
+    return { ok: false, error: "No pudimos registrar tu pedido." };
+  }
+
+  const supabase = createAdminClient();
+  const ip = await hashIp();
+
+  if (!(await consumirLimite(supabase, `crear:ip:${ip}`, 10, 600))) {
+    return {
+      ok: false,
+      error: "Has hecho demasiados intentos. Espera unos minutos.",
+    };
+  }
+
+  const telefono = input.telefono?.trim();
+  const telefonoHash = telefono ? hashTelefono(telefono) : null;
+
+  if (
+    telefonoHash &&
+    !(await consumirLimite(supabase, `crear:tel:${telefonoHash}`, 3, 3600))
+  ) {
+    return {
+      ok: false,
+      error: "Has hecho demasiados pedidos. Espera un momento.",
+    };
+  }
 
   const { data, error } = await supabase.rpc("crear_pedido", {
     p_tipo: input.modo,
     p_mesa: input.modo === "restaurante" ? (input.mesa ?? null) : null,
     p_cliente_nombre: nombre,
-    p_cliente_telefono: input.telefono?.trim() || null,
+    p_cliente_telefono: telefono || null,
     p_direccion: input.modo === "domicilio" ? input.direccion!.trim() : null,
     p_lugar: input.lugar?.trim() || null,
     p_notas: input.notas?.trim() || null,
@@ -85,6 +160,7 @@ export async function crearPedido(
       opciones: i.opciones ?? [],
       adiciones: i.adiciones ?? [],
     })),
+    p_idempotencia: idempotencia,
   });
 
   if (error) {
@@ -113,16 +189,36 @@ export async function actualizarPedido(
   const nombre = input.nombre?.trim();
   const items = (input.items ?? []).filter((i) => i.cantidad > 0);
 
-  if (!input.token) {
+  if (!input.token || !UUID_RE.test(input.token)) {
     return { ok: false, error: "No encontramos tu pedido." };
   }
   if (!nombre) return { ok: false, error: "Escribe tu nombre." };
   if (items.length === 0) return { ok: false, error: "Tu carrito está vacío." };
+  if (items.length > 50) {
+    return { ok: false, error: "El pedido tiene demasiados ítems." };
+  }
   if (!input.direccion?.trim()) {
     return { ok: false, error: "Escribe la dirección de entrega." };
   }
 
-  const supabase = createPublicClient();
+  const supabase = createAdminClient();
+  const ip = await hashIp();
+
+  if (!(await consumirLimite(supabase, `editar:ip:${ip}`, 10, 600))) {
+    return {
+      ok: false,
+      error: "Has hecho demasiados intentos. Espera unos minutos.",
+    };
+  }
+
+  if (
+    !(await consumirLimite(supabase, `editar:token:${input.token}`, 10, 600))
+  ) {
+    return {
+      ok: false,
+      error: "Has hecho demasiados intentos. Espera unos minutos.",
+    };
+  }
 
   const { data, error } = await supabase.rpc("actualizar_pedido", {
     p_token: input.token,
@@ -179,11 +275,20 @@ export async function actualizarPedido(
 }
 
 export async function estadoPedido(token: string): Promise<EstadoPedidoResult> {
-  if (!token) {
+  if (!token || !UUID_RE.test(token)) {
     return { ok: false, error: "No encontramos tu pedido." };
   }
 
-  const supabase = createPublicClient();
+  const supabase = createAdminClient();
+  const ip = await hashIp();
+
+  if (!(await consumirLimite(supabase, `estado:ip:${ip}`, 120, 60))) {
+    return {
+      ok: false,
+      error: "Demasiadas consultas. Espera un momento.",
+    };
+  }
+
   const { data, error } = await supabase.rpc("estado_pedido", {
     p_token: token,
   });

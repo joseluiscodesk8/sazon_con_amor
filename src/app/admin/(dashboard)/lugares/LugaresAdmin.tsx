@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Dialogo from "@/components/Dialogo";
 import {
   cambiarActivoLugar,
   eliminarLugar,
@@ -73,7 +74,11 @@ export default function LugaresAdmin({ lugares }: Props) {
         </button>
       </div>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {lugares.length === 0 ? (
         <p className={styles.empty}>
@@ -113,57 +118,58 @@ export default function LugaresAdmin({ lugares }: Props) {
       )}
 
       {modal ? (
-        <div className={styles.overlay} onClick={() => setModal(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHead}>
-              <h2>{modal === "nuevo" ? "Nuevo lugar" : "Editar lugar"}</h2>
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                aria-label="Cerrar"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form action={onGuardar} className={styles.form}>
-              <label className={styles.field}>
-                <span>Nombre *</span>
-                <input
-                  name="nombre"
-                  required
-                  placeholder="Ej. Casa, Oficina, Mamá"
-                  defaultValue={modal === "nuevo" ? "" : modal.nombre}
-                />
-              </label>
-              <label className={styles.field}>
-                <span>Dirección *</span>
-                <textarea
-                  name="direccion"
-                  rows={2}
-                  required
-                  placeholder="Calle, número, barrio, referencias"
-                  defaultValue={modal === "nuevo" ? "" : modal.direccion}
-                />
-              </label>
-              <label className={styles.check}>
-                <input
-                  type="checkbox"
-                  name="activo"
-                  defaultChecked={modal === "nuevo" ? true : modal.activo}
-                />
-                <span>Visible en el checkout</span>
-              </label>
-              <button
-                type="submit"
-                className={styles.primary}
-                disabled={pending}
-              >
-                {pending ? "Guardando…" : "Guardar"}
-              </button>
-            </form>
+        <Dialogo
+          etiquetadoPor="lugar-modal-titulo"
+          onCerrar={() => setModal(null)}
+          overlayClassName={styles.overlay}
+          panelClassName={styles.modal}
+        >
+          <div className={styles.modalHead}>
+            <h2 id="lugar-modal-titulo">
+              {modal === "nuevo" ? "Nuevo lugar" : "Editar lugar"}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setModal(null)}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
           </div>
-        </div>
+
+          <form action={onGuardar} className={styles.form}>
+            <label className={styles.field}>
+              <span>Nombre *</span>
+              <input
+                name="nombre"
+                required
+                placeholder="Ej. Casa, Oficina, Mamá"
+                defaultValue={modal === "nuevo" ? "" : modal.nombre}
+              />
+            </label>
+            <label className={styles.field}>
+              <span>Dirección *</span>
+              <textarea
+                name="direccion"
+                rows={2}
+                required
+                placeholder="Calle, número, barrio, referencias"
+                defaultValue={modal === "nuevo" ? "" : modal.direccion}
+              />
+            </label>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                name="activo"
+                defaultChecked={modal === "nuevo" ? true : modal.activo}
+              />
+              <span>Visible en el checkout</span>
+            </label>
+            <button type="submit" className={styles.primary} disabled={pending}>
+              {pending ? "Guardando…" : "Guardar"}
+            </button>
+          </form>
+        </Dialogo>
       ) : null}
     </div>
   );
