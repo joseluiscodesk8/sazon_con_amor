@@ -1,13 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { nombreCookieAuth, type AreaSesion } from "./cookies";
 
-export async function createClient() {
+async function areaDeRequest(): Promise<AreaSesion> {
+  const store = await headers();
+  return store.get("x-sazon-area") === "mesero" ? "mesero" : "admin";
+}
+
+export async function createClient(area?: AreaSesion) {
   const cookieStore = await cookies();
+  const areaFinal = area ?? (await areaDeRequest());
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: { name: nombreCookieAuth(areaFinal) },
       cookies: {
         getAll() {
           return cookieStore.getAll();

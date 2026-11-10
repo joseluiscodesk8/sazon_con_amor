@@ -20,6 +20,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
           <Link href="/admin">Pedidos</Link>
           <Link href="/admin/menu">Menú</Link>
           <Link href="/admin/lugares">Lugares</Link>
+          <Link href="/admin/meseros">Meseros</Link>
         </nav>
 
         <div className={styles.footer}>

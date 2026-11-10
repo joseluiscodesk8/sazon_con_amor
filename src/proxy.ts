@@ -1,18 +1,33 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { nombreCookieAuth, type AreaSesion } from "@/lib/supabase/cookies";
 
-const LOGIN_PATH = "/admin/login";
+const LOGIN_ADMIN = "/admin/login";
+const LOGIN_MESERO = "/mesero/login";
 
-// Rutas de /admin accesibles sin sesión.
-const RUTAS_PUBLICAS = ["/admin/login", "/admin/registro"];
+// Rutas accesibles sin sesión.
+const RUTAS_PUBLICAS = [
+  LOGIN_ADMIN,
+  "/admin/registro",
+  LOGIN_MESERO,
+];
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+  const esZonaMesero =
+    pathname === "/mesero" || pathname.startsWith("/mesero/");
+  const area: AreaSesion = esZonaMesero ? "mesero" : "admin";
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-sazon-area", area);
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: { name: nombreCookieAuth(area) },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -21,7 +36,14 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          response = NextResponse.next({ request });
+          requestHeaders.set(
+            "cookie",
+            request.cookies
+              .getAll()
+              .map(({ name, value }) => `${name}=${value}`)
+              .join("; "),
+          );
+          response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -35,22 +57,13 @@ export async function proxy(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const isAuthenticated = Boolean(data?.claims);
-  const isLoginPath = request.nextUrl.pathname === LOGIN_PATH;
-  const esRutaPublica = RUTAS_PUBLICAS.includes(request.nextUrl.pathname);
+  const loginPath = esZonaMesero ? LOGIN_MESERO : LOGIN_ADMIN;
+  const esRutaPublica = RUTAS_PUBLICAS.includes(pathname);
 
   if (!isAuthenticated && !esRutaPublica) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = LOGIN_PATH;
-    redirectUrl.searchParams.set("next", request.nextUrl.pathname);
-    const redirect = NextResponse.redirect(redirectUrl);
-    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
-    return redirect;
-  }
-
-  if (isAuthenticated && isLoginPath) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/admin";
-    redirectUrl.search = "";
+    redirectUrl.pathname = loginPath;
+    redirectUrl.searchParams.set("next", pathname);
     const redirect = NextResponse.redirect(redirectUrl);
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;
@@ -60,5 +73,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: "/admin/:path*",
+  matcher: ["/admin/:path*", "/mesero/:path*"],
 };

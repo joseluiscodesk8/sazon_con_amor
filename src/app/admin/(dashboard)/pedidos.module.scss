@@ -158,6 +158,43 @@
   }
 }
 
+.mesasAbiertas {
+  margin-bottom: 1.75rem;
+}
+
+.abiertasGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.abiertaCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  background: var(--crema-oscura);
+}
+
+.abiertaInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+
+  strong {
+    font-size: 1.05rem;
+    color: var(--carbon);
+  }
+
+  span {
+    font-size: 0.8rem;
+    color: var(--gris);
+  }
+}
+
 .bloque {
   margin-top: 1.75rem;
 }
@@ -215,6 +252,11 @@
 .tipoRestaurante {
   background: var(--verde-claro);
   color: var(--verde);
+}
+
+.tipoMesero {
+  background: #ede9fe;
+  color: #5b36a3;
 }
 
 .estadoBadge {
@@ -311,7 +353,10 @@
 
 .cardFooter {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .total {
@@ -357,5 +402,17 @@
   &:hover:not(:disabled) {
     background: #f7eeee;
     color: var(--rojo);
+  }
+}
+
+.accionEliminar {
+  background: #fff;
+  border: 1px solid #e5b4ae;
+  color: var(--rojo);
+
+  &:hover:not(:disabled) {
+    border-color: var(--rojo);
+    background: var(--rojo);
+    color: #fff;
   }
 }

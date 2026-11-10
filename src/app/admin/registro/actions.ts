@@ -60,7 +60,7 @@ export async function registrarAdmin(
   const { error: errorAdmin } = await admin
     .from("admins")
     .upsert(
-      { user_id: creado.user.id, usuario, email },
+      { user_id: creado.user.id, usuario, email, rol: "admin" },
       { onConflict: "user_id" },
     );
 

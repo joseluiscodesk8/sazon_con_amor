@@ -1,5 +1,7 @@
 export type TipoPedido = "domicilio" | "restaurante";
 
+export type OrigenPedido = "cliente" | "mesero";
+
 export type EstadoPedido =
   | "nuevo"
   | "en_preparacion"
@@ -29,10 +31,19 @@ export type PedidoItem = {
   adiciones: AdicionSeleccionada[] | null;
 };
 
+export type MesaAbierta = {
+  id: string;
+  mesa: number;
+  mesero_user_id: string;
+  mesero_nombre: string;
+  abierta_at: string;
+};
+
 export type Pedido = {
   id: string;
   numero: number;
   tipo: TipoPedido;
+  origen: OrigenPedido;
   estado: EstadoPedido;
   mesa: number | null;
   cliente_nombre: string;
@@ -41,19 +52,12 @@ export type Pedido = {
   lugar: string | null;
   notas: string | null;
   total: number;
+  mesero_user_id: string | null;
+  mesero_nombre: string | null;
   created_at: string;
   updated_at: string;
   pedido_items: PedidoItem[];
 };
-
-export const ESTADOS: EstadoPedido[] = [
-  "nuevo",
-  "en_preparacion",
-  "listo",
-  "en_camino",
-  "entregado",
-  "cancelado",
-];
 
 export const ESTADO_LABEL: Record<EstadoPedido, string> = {
   nuevo: "Nuevo",
@@ -63,24 +67,6 @@ export const ESTADO_LABEL: Record<EstadoPedido, string> = {
   entregado: "Entregado",
   cancelado: "Cancelado",
 };
-
-export function estadosSiguientes(
-  tipo: TipoPedido,
-  estado: EstadoPedido,
-): EstadoPedido[] {
-  if (estado === "entregado" || estado === "cancelado") return [];
-
-  const flujo: EstadoPedido[] =
-    tipo === "domicilio"
-      ? ["nuevo", "en_preparacion", "listo", "en_camino", "entregado"]
-      : ["nuevo", "en_preparacion", "listo", "entregado"];
-
-  const indice = flujo.indexOf(estado);
-  if (indice === -1) return [];
-
-  const siguientes = flujo.slice(indice + 1);
-  return [...siguientes, "cancelado"];
-}
 
 export function formatearHora(iso: string) {
   return new Intl.DateTimeFormat("es-CO", {

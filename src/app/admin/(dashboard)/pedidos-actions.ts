@@ -1,30 +1,69 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/supabase/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { ESTADOS, type EstadoPedido } from "@/lib/pedidos";
 
 export type EstadoResult = { ok: true } | { ok: false; error: string };
 
-export async function cambiarEstado(
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const ESTADOS_ACTIVOS = ["nuevo", "en_preparacion", "listo", "en_camino"];
+
+export async function cancelarPedido(
   pedidoId: string,
-  estado: EstadoPedido,
 ): Promise<EstadoResult> {
   await requireAdmin();
 
-  if (!ESTADOS.includes(estado)) {
-    return { ok: false, error: "Estado inválido." };
+  if (!UUID_RE.test(pedidoId)) {
+    return { ok: false, error: "Pedido inválido." };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("pedidos")
-    .update({ estado })
-    .eq("id", pedidoId);
+    .update({ estado: "cancelado" })
+    .eq("id", pedidoId)
+    .in("estado", ESTADOS_ACTIVOS)
+    .select("id");
 
   if (error) {
-    console.error("[cambiarEstado]", error);
-    return { ok: false, error: "No se pudo actualizar el pedido." };
+    console.error("[cancelarPedido]", error);
+    return { ok: false, error: "No se pudo cancelar el pedido." };
+  }
+
+  if (!data || data.length === 0) {
+    return { ok: false, error: "El pedido ya no está activo." };
+  }
+
+  return { ok: true };
+}
+
+export async function eliminarPedido(
+  pedidoId: string,
+): Promise<EstadoResult> {
+  await requireAdmin();
+
+  if (!UUID_RE.test(pedidoId)) {
+    return { ok: false, error: "Pedido inválido." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("pedidos")
+    .delete()
+    .eq("id", pedidoId)
+    .select("id");
+
+  if (error) {
+    console.error("[eliminarPedido]", error);
+    return { ok: false, error: "No se pudo eliminar el pedido." };
+  }
+
+  if (!data || data.length === 0) {
+    return { ok: false, error: "El pedido no existe." };
   }
 
   return { ok: true };
@@ -33,22 +72,20 @@ export async function cambiarEstado(
 export async function cerrarMesa(mesa: number): Promise<EstadoResult> {
   await requireAdmin();
 
-  if (!Number.isInteger(mesa) || mesa <= 0) {
+  if (!Number.isInteger(mesa) || mesa < 1 || mesa > 60) {
     return { ok: false, error: "Mesa inválida." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("pedidos")
-    .update({ estado: "entregado" })
-    .eq("tipo", "restaurante")
-    .eq("mesa", mesa)
-    .in("estado", ["nuevo", "en_preparacion", "listo"]);
+  const supabase = createAdminClient();
+  const { error } = await supabase.rpc("cerrar_mesa", { p_mesa: mesa });
 
   if (error) {
     console.error("[cerrarMesa]", error);
     return { ok: false, error: "No se pudo cerrar la mesa." };
   }
+
+  revalidatePath("/admin");
+  revalidatePath("/mesero");
 
   return { ok: true };
 }

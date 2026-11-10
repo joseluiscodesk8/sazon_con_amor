@@ -6,29 +6,36 @@ import { createClient } from "@/lib/supabase/client";
 import { formatearPrecio } from "@/lib/format";
 import {
   ESTADO_LABEL,
-  estadosSiguientes,
   formatearHora,
   type EstadoPedido,
+  type MesaAbierta,
   type Pedido,
   type TipoPedido,
 } from "@/lib/pedidos";
-import { cambiarEstado, cerrarMesa } from "./pedidos-actions";
+import { cancelarPedido, cerrarMesa, eliminarPedido } from "./pedidos-actions";
+import ImpresionPedido from "./ImpresionPedido";
 import styles from "./pedidos.module.scss";
 
-type Filtro = "todos" | TipoPedido;
+type Filtro = "todos" | TipoPedido | "mesero";
 
 const ACTIVOS: EstadoPedido[] = ["nuevo", "en_preparacion", "listo", "en_camino"];
 
-export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
+export default function PedidosCliente({
+  pedidos,
+  mesasAbiertas,
+}: {
+  pedidos: Pedido[];
+  mesasAbiertas: MesaAbierta[];
+}) {
   const router = useRouter();
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [soloActivos, setSoloActivos] = useState(true);
-  const [actualizando, setActualizando] = useState<string | null>(null);
+  const [procesando, setProcesando] = useState<string | null>(null);
   const [cerrandoMesa, setCerrandoMesa] = useState<number | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
-    const supabase = createClient();
+    const supabase = createClient("admin");
     const channel = supabase
       .channel("pedidos-live")
       .on(
@@ -41,6 +48,11 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
         { event: "*", schema: "public", table: "pedido_items" },
         () => router.refresh(),
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "mesas_abiertas" },
+        () => router.refresh(),
+      )
       .subscribe();
 
     return () => {
@@ -50,7 +62,19 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
 
   const visibles = useMemo(() => {
     let lista = pedidos;
-    if (filtro !== "todos") lista = lista.filter((p) => p.tipo === filtro);
+
+    if (filtro === "mesero") {
+      lista = lista.filter(
+        (p) => p.tipo === "restaurante" && p.origen === "mesero",
+      );
+    } else if (filtro === "restaurante") {
+      lista = lista.filter(
+        (p) => p.tipo === "restaurante" && p.origen !== "mesero",
+      );
+    } else if (filtro === "domicilio") {
+      lista = lista.filter((p) => p.tipo === "domicilio");
+    }
+
     if (soloActivos) lista = lista.filter((p) => ACTIVOS.includes(p.estado));
     return lista;
   }, [pedidos, filtro, soloActivos]);
@@ -90,32 +114,95 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
     [visibles],
   );
 
+  const mesasResumen = useMemo(() => {
+    const totales = new Map<number, number>();
+    const tickets = new Map<number, number>();
+
+    for (const pedido of pedidos) {
+      if (
+        pedido.tipo !== "restaurante" ||
+        pedido.origen !== "mesero" ||
+        pedido.mesa == null ||
+        !ACTIVOS.includes(pedido.estado)
+      ) {
+        continue;
+      }
+
+      totales.set(pedido.mesa, (totales.get(pedido.mesa) ?? 0) + pedido.total);
+      tickets.set(pedido.mesa, (tickets.get(pedido.mesa) ?? 0) + 1);
+    }
+
+    return mesasAbiertas
+      .map((sesion) => ({
+        ...sesion,
+        total: totales.get(sesion.mesa) ?? 0,
+        tickets: tickets.get(sesion.mesa) ?? 0,
+      }))
+      .sort((a, b) => a.mesa - b.mesa);
+  }, [mesasAbiertas, pedidos]);
+
   const hayPedidos =
     gruposMesa.length > 0 ||
     restauranteHistorial.length > 0 ||
     domicilio.length > 0;
 
-  const contar = (tipo: Filtro) =>
-    pedidos.filter((p) => (tipo === "todos" ? true : p.tipo === tipo)).length;
+  const contar = (tipo: Filtro) => {
+    if (tipo === "todos") return pedidos.length;
+    if (tipo === "mesero") {
+      return pedidos.filter(
+        (p) => p.tipo === "restaurante" && p.origen === "mesero",
+      ).length;
+    }
+    if (tipo === "restaurante") {
+      return pedidos.filter(
+        (p) => p.tipo === "restaurante" && p.origen !== "mesero",
+      ).length;
+    }
+    return pedidos.filter((p) => p.tipo === tipo).length;
+  };
 
-  function onCambiarEstado(pedidoId: string, estado: EstadoPedido) {
-    setActualizando(pedidoId);
+  function onCancelar(pedido: Pedido) {
+    if (!confirm(`¿Cancelar el pedido #${pedido.numero}?`)) return;
+
+    setProcesando(pedido.id);
     startTransition(async () => {
-      const res = await cambiarEstado(pedidoId, estado);
+      const res = await cancelarPedido(pedido.id);
       if (!res.ok) {
-        setActualizando(null);
+        setProcesando(null);
         alert(res.error);
         return;
       }
       router.refresh();
-      setActualizando(null);
+      setProcesando(null);
     });
   }
 
-  function onCerrarMesa(mesa: number, tickets: number) {
+  function onEliminar(pedido: Pedido) {
     if (
       !confirm(
-        `¿Cerrar la mesa ${mesa}? Se marcarán ${tickets} ticket(s) como entregados.`,
+        `¿Eliminar definitivamente el pedido #${pedido.numero}? Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return;
+    }
+
+    setProcesando(pedido.id);
+    startTransition(async () => {
+      const res = await eliminarPedido(pedido.id);
+      if (!res.ok) {
+        setProcesando(null);
+        alert(res.error);
+        return;
+      }
+      router.refresh();
+      setProcesando(null);
+    });
+  }
+
+  function onCerrarMesa(mesa: number) {
+    if (
+      !confirm(
+        `¿Cerrar la mesa ${mesa}? Se cerrarán sus pedidos activos y la mesa quedará libre.`,
       )
     )
       return;
@@ -134,6 +221,13 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
   }
 
   function renderPedido(pedido: Pedido) {
+    const etiquetaTipo =
+      pedido.tipo === "domicilio"
+        ? "Domicilio"
+        : pedido.origen === "mesero"
+          ? "Mesero"
+          : "Restaurante";
+
     return (
       <article key={pedido.id} className={styles.card}>
         <header className={styles.cardHead}>
@@ -143,10 +237,12 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
               className={`${styles.tipoBadge} ${
                 pedido.tipo === "domicilio"
                   ? styles.tipoDomicilio
-                  : styles.tipoRestaurante
+                  : pedido.origen === "mesero"
+                    ? styles.tipoMesero
+                    : styles.tipoRestaurante
               }`}
             >
-              {pedido.tipo === "domicilio" ? "Domicilio" : "Restaurante"}
+              {etiquetaTipo}
             </span>
           </div>
           <span
@@ -161,7 +257,13 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
         <div className={styles.meta}>
           <span>🕒 {formatearHora(pedido.created_at)}</span>
           {pedido.mesa ? <span>🪑 Mesa {pedido.mesa}</span> : null}
-          <span>👤 {pedido.cliente_nombre}</span>
+          {pedido.origen === "mesero" ? (
+            <span>🛎️ Mesero: {pedido.mesero_nombre || "Sin asignar"}</span>
+          ) : null}
+          {pedido.cliente_nombre &&
+          pedido.cliente_nombre !== `Mesa ${pedido.mesa}` ? (
+            <span>👤 {pedido.cliente_nombre}</span>
+          ) : null}
           {pedido.cliente_telefono ? (
             <a href={`tel:${pedido.cliente_telefono}`}>
               📞 {pedido.cliente_telefono}
@@ -212,27 +314,28 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
           <span className={styles.total}>
             Total: <strong>{formatearPrecio(pedido.total)}</strong>
           </span>
-        </div>
-
-        {estadosSiguientes(pedido.tipo, pedido.estado).length > 0 ? (
           <div className={styles.acciones}>
-            {estadosSiguientes(pedido.tipo, pedido.estado).map((estado) => (
+            {ACTIVOS.includes(pedido.estado) ? (
               <button
-                key={estado}
                 type="button"
-                disabled={actualizando === pedido.id}
-                onClick={() => onCambiarEstado(pedido.id, estado)}
-                className={`${styles.accion} ${
-                  estado === "cancelado" ? styles.accionCancelar : ""
-                }`}
+                disabled={procesando === pedido.id}
+                onClick={() => onCancelar(pedido)}
+                className={`${styles.accion} ${styles.accionCancelar}`}
               >
-                {estado === "cancelado"
-                  ? "Cancelar"
-                  : `→ ${ESTADO_LABEL[estado]}`}
+                Cancelar
               </button>
-            ))}
+            ) : null}
+            <ImpresionPedido pedido={pedido} className={styles.accion} />
+            <button
+              type="button"
+              disabled={procesando === pedido.id}
+              onClick={() => onEliminar(pedido)}
+              className={`${styles.accion} ${styles.accionEliminar}`}
+            >
+              Eliminar
+            </button>
           </div>
-        ) : null}
+        </div>
       </article>
     );
   }
@@ -255,31 +358,68 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
       </div>
 
       <div className={styles.tabs} role="group" aria-label="Filtrar pedidos">
-        {(["todos", "domicilio", "restaurante"] as Filtro[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            className={`${styles.tab} ${filtro === t ? styles.tabActive : ""}`}
-            onClick={() => setFiltro(t)}
-            aria-pressed={filtro === t}
-          >
-            {t === "todos" ? (
-              "Todos"
-            ) : t === "domicilio" ? (
-              <>
-                <span aria-hidden>🛵</span> Domicilio
-              </>
-            ) : (
-              <>
-                <span aria-hidden>🍽️</span> Restaurante
-              </>
-            )}
-            <span className={styles.tabCount}>{contar(t)}</span>
-          </button>
-        ))}
+        {(["todos", "domicilio", "restaurante", "mesero"] as Filtro[]).map(
+          (t) => (
+            <button
+              key={t}
+              type="button"
+              className={`${styles.tab} ${filtro === t ? styles.tabActive : ""}`}
+              onClick={() => setFiltro(t)}
+              aria-pressed={filtro === t}
+            >
+              {t === "todos" ? (
+                "Todos"
+              ) : t === "domicilio" ? (
+                <>
+                  <span aria-hidden>🛵</span> Domicilio
+                </>
+              ) : t === "restaurante" ? (
+                <>
+                  <span aria-hidden>🍽️</span> Restaurante
+                </>
+              ) : (
+                <>
+                  <span aria-hidden>🛎️</span> Mesero
+                </>
+              )}
+              <span className={styles.tabCount}>{contar(t)}</span>
+            </button>
+          ),
+        )}
       </div>
 
-      {!hayPedidos ? (
+      {mesasResumen.length > 0 ? (
+        <section className={styles.mesasAbiertas} aria-label="Mesas abiertas">
+          <h2 className={styles.seccionTitulo}>Mesas abiertas</h2>
+          <div className={styles.abiertasGrid}>
+            {mesasResumen.map((sesion) => (
+              <article key={sesion.id} className={styles.abiertaCard}>
+                <div className={styles.abiertaInfo}>
+                  <strong>Mesa {sesion.mesa}</strong>
+                  <span>{sesion.mesero_nombre}</span>
+                  <span>
+                    {sesion.tickets > 0
+                      ? `${sesion.tickets} ${
+                          sesion.tickets === 1 ? "ticket" : "tickets"
+                        } · ${formatearPrecio(sesion.total)}`
+                      : "Sin pedidos todavía"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.cerrarMesa}
+                  disabled={cerrandoMesa === sesion.mesa}
+                  onClick={() => onCerrarMesa(sesion.mesa)}
+                >
+                  {cerrandoMesa === sesion.mesa ? "Cerrando…" : "Cerrar mesa"}
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {!hayPedidos && mesasResumen.length === 0 ? (
         <p className={styles.empty}>No hay pedidos por aquí.</p>
       ) : (
         <>
@@ -305,7 +445,7 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
                           type="button"
                           className={styles.cerrarMesa}
                           disabled={cerrandoMesa === mesa}
-                          onClick={() => onCerrarMesa(mesa, tickets.length)}
+                          onClick={() => onCerrarMesa(mesa)}
                         >
                           {cerrandoMesa === mesa ? "Cerrando…" : "Cerrar mesa"}
                         </button>
@@ -329,7 +469,11 @@ export default function PedidosCliente({ pedidos }: { pedidos: Pedido[] }) {
 
           {restauranteHistorial.length > 0 ? (
             <div className={styles.bloque}>
-              <h2 className={styles.seccionTitulo}>Restaurante · historial</h2>
+              <h2 className={styles.seccionTitulo}>
+                {filtro === "mesero"
+                  ? "Mesero · historial"
+                  : "Restaurante · historial"}
+              </h2>
               <div className={styles.grid}>
                 {restauranteHistorial.map(renderPedido)}
               </div>
