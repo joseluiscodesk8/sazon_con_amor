@@ -26,7 +26,10 @@ export default async function MeseroPage() {
       .limit(150),
     supabase
       .from("mesas_abiertas")
-      .select("id, mesa, mesero_user_id, mesero_nombre, abierta_at")
+      .select(
+        "id, mesa, mesero_user_id, mesero_nombre, abierta_at, estado, cerrada_at",
+      )
+      .eq("estado", "abierta")
       .order("mesa", { ascending: true }),
   ]);
 

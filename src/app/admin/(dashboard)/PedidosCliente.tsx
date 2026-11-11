@@ -9,10 +9,16 @@ import {
   formatearHora,
   type EstadoPedido,
   type MesaAbierta,
+  type MesaCerrada,
   type Pedido,
   type TipoPedido,
 } from "@/lib/pedidos";
-import { cancelarPedido, cerrarMesa, eliminarPedido } from "./pedidos-actions";
+import {
+  cancelarPedido,
+  cerrarMesa,
+  eliminarPedido,
+  limpiarHistorialMesas,
+} from "./pedidos-actions";
 import ImpresionPedido from "./ImpresionPedido";
 import styles from "./pedidos.module.scss";
 
@@ -23,40 +29,65 @@ const ACTIVOS: EstadoPedido[] = ["nuevo", "en_preparacion", "listo", "en_camino"
 export default function PedidosCliente({
   pedidos,
   mesasAbiertas,
+  mesasCerradas,
 }: {
   pedidos: Pedido[];
   mesasAbiertas: MesaAbierta[];
+  mesasCerradas: MesaCerrada[];
 }) {
   const router = useRouter();
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [soloActivos, setSoloActivos] = useState(true);
   const [procesando, setProcesando] = useState<string | null>(null);
   const [cerrandoMesa, setCerrandoMesa] = useState<number | null>(null);
+  const [limpiando, setLimpiando] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
     const supabase = createClient("admin");
-    const channel = supabase
-      .channel("pedidos-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedidos" },
-        () => router.refresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedido_items" },
-        () => router.refresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mesas_abiertas" },
-        () => router.refresh(),
-      )
-      .subscribe();
+    let activo = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function suscribir() {
+      const { data } = await supabase.auth.getSession();
+      if (!activo) return;
+
+      if (data.session?.access_token) {
+        supabase.realtime.setAuth(data.session.access_token);
+      }
+
+      channel = supabase
+        .channel("pedidos-live")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "pedidos" },
+          () => router.refresh(),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "mesas_abiertas" },
+          () => router.refresh(),
+        )
+        .subscribe((status: string) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn("[admin realtime]", status);
+          }
+        });
+    }
+
+    function alVolver() {
+      if (document.visibilityState === "visible") {
+        router.refresh();
+      }
+    }
+
+    void suscribir();
+    document.addEventListener("visibilitychange", alVolver);
 
     return () => {
-      supabase.removeChannel(channel);
+      activo = false;
+      document.removeEventListener("visibilitychange", alVolver);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [router]);
 
@@ -101,12 +132,25 @@ export default function PedidosCliente({
       }));
   }, [visibles]);
 
+  const idsCerrados = useMemo(
+    () =>
+      new Set(
+        mesasCerradas.flatMap((sesion) =>
+          sesion.pedidos.map((pedido) => pedido.id),
+        ),
+      ),
+    [mesasCerradas],
+  );
+
   const restauranteHistorial = useMemo(
     () =>
       visibles.filter(
-        (p) => p.tipo === "restaurante" && !ACTIVOS.includes(p.estado),
+        (p) =>
+          p.tipo === "restaurante" &&
+          !ACTIVOS.includes(p.estado) &&
+          !idsCerrados.has(p.id),
       ),
-    [visibles],
+    [visibles, idsCerrados],
   );
 
   const domicilio = useMemo(
@@ -144,7 +188,8 @@ export default function PedidosCliente({
   const hayPedidos =
     gruposMesa.length > 0 ||
     restauranteHistorial.length > 0 ||
-    domicilio.length > 0;
+    domicilio.length > 0 ||
+    mesasCerradas.length > 0;
 
   const contar = (tipo: Filtro) => {
     if (tipo === "todos") return pedidos.length;
@@ -202,7 +247,7 @@ export default function PedidosCliente({
   function onCerrarMesa(mesa: number) {
     if (
       !confirm(
-        `¿Cerrar la mesa ${mesa}? Se cerrarán sus pedidos activos y la mesa quedará libre.`,
+        `¿Cerrar la mesa ${mesa}? El ticket quedará guardado en el historial y la mesa quedará libre.`,
       )
     )
       return;
@@ -220,7 +265,38 @@ export default function PedidosCliente({
     });
   }
 
-  function renderPedido(pedido: Pedido) {
+  function onLimpiarHistorial() {
+    const totalTickets = mesasCerradas.reduce(
+      (acc, sesion) => acc + sesion.pedidos.length,
+      0,
+    );
+
+    if (
+      !confirm(
+        `¿Borrar el historial de mesas cerradas? Se eliminarán ${mesasCerradas.length} ${
+          mesasCerradas.length === 1 ? "mesa" : "mesas"
+        } y ${totalTickets} ${
+          totalTickets === 1 ? "ticket" : "tickets"
+        }. Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return;
+    }
+
+    setLimpiando(true);
+    startTransition(async () => {
+      const res = await limpiarHistorialMesas();
+      if (!res.ok) {
+        setLimpiando(false);
+        alert(res.error);
+        return;
+      }
+      router.refresh();
+      setLimpiando(false);
+    });
+  }
+
+  function renderPedido(pedido: Pedido, soloImprimir = false) {
     const etiquetaTipo =
       pedido.tipo === "domicilio"
         ? "Domicilio"
@@ -315,7 +391,7 @@ export default function PedidosCliente({
             Total: <strong>{formatearPrecio(pedido.total)}</strong>
           </span>
           <div className={styles.acciones}>
-            {ACTIVOS.includes(pedido.estado) ? (
+            {!soloImprimir && ACTIVOS.includes(pedido.estado) ? (
               <button
                 type="button"
                 disabled={procesando === pedido.id}
@@ -326,14 +402,16 @@ export default function PedidosCliente({
               </button>
             ) : null}
             <ImpresionPedido pedido={pedido} className={styles.accion} />
-            <button
-              type="button"
-              disabled={procesando === pedido.id}
-              onClick={() => onEliminar(pedido)}
-              className={`${styles.accion} ${styles.accionEliminar}`}
-            >
-              Eliminar
-            </button>
+            {!soloImprimir ? (
+              <button
+                type="button"
+                disabled={procesando === pedido.id}
+                onClick={() => onEliminar(pedido)}
+                className={`${styles.accion} ${styles.accionEliminar}`}
+              >
+                Eliminar
+              </button>
+            ) : null}
           </div>
         </div>
       </article>
@@ -451,7 +529,7 @@ export default function PedidosCliente({
                         </button>
                       </div>
                     </header>
-                    <div className={styles.grid}>{tickets.map(renderPedido)}</div>
+                    <div className={styles.grid}>{tickets.map((pedido) => renderPedido(pedido))}</div>
                   </section>
                 );
               })}
@@ -463,7 +541,7 @@ export default function PedidosCliente({
               {filtro === "todos" && gruposMesa.length > 0 ? (
                 <h2 className={styles.seccionTitulo}>Domicilio</h2>
               ) : null}
-              <div className={styles.grid}>{domicilio.map(renderPedido)}</div>
+              <div className={styles.grid}>{domicilio.map((pedido) => renderPedido(pedido))}</div>
             </div>
           ) : null}
 
@@ -475,9 +553,65 @@ export default function PedidosCliente({
                   : "Restaurante · historial"}
               </h2>
               <div className={styles.grid}>
-                {restauranteHistorial.map(renderPedido)}
+                {restauranteHistorial.map((pedido) => renderPedido(pedido))}
               </div>
             </div>
+          ) : null}
+
+          {mesasCerradas.length > 0 ? (
+            <section className={styles.bloque} aria-label="Mesas cerradas">
+              <div className={styles.historialHead}>
+                <h2 className={styles.seccionTitulo}>Mesas cerradas</h2>
+                <button
+                  type="button"
+                  className={styles.borrarHistorial}
+                  disabled={limpiando}
+                  onClick={onLimpiarHistorial}
+                >
+                  {limpiando ? "Borrando…" : "Borrar historial"}
+                </button>
+              </div>
+              <div className={styles.mesas}>
+                {mesasCerradas.map((sesion) => {
+                  const total = sesion.pedidos.reduce(
+                    (acc, pedido) => acc + pedido.total,
+                    0,
+                  );
+                  const tickets = sesion.pedidos.length;
+
+                  return (
+                    <section key={sesion.id} className={styles.mesa}>
+                      <header className={styles.mesaHead}>
+                        <div className={styles.mesaInfo}>
+                          <h2 className={styles.mesaTitulo}>
+                            Mesa {sesion.mesa}
+                          </h2>
+                          <span className={styles.mesaMeta}>
+                            {sesion.mesero_nombre} · Cerrada{" "}
+                            {formatearHora(
+                              sesion.cerrada_at ?? sesion.abierta_at,
+                            )}{" "}
+                            · {tickets} {tickets === 1 ? "ticket" : "tickets"}
+                          </span>
+                        </div>
+                        <span className={styles.mesaTotal}>
+                          Total: <strong>{formatearPrecio(total)}</strong>
+                        </span>
+                      </header>
+                      {tickets > 0 ? (
+                        <div className={styles.grid}>
+                          {sesion.pedidos.map((pedido) =>
+                            renderPedido(pedido, true),
+                          )}
+                        </div>
+                      ) : (
+                        <p className={styles.empty}>Sin tickets.</p>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            </section>
           ) : null}
         </>
       )}

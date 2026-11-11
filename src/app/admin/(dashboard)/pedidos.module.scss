@@ -205,6 +205,40 @@
   color: var(--carbon);
 }
 
+.historialHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+
+  .seccionTitulo {
+    margin-bottom: 0;
+  }
+}
+
+.borrarHistorial {
+  border: 1px solid #e5b4ae;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--rojo);
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 0.9rem;
+
+  &:hover:not(:disabled) {
+    border-color: var(--rojo);
+    background: var(--rojo);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
 .card {
   background: var(--blanco);
   border: 1px solid var(--borde);

@@ -176,6 +176,21 @@
   }
 }
 
+.ticketItemsMesa {
+  li {
+    display: block;
+  }
+
+  strong {
+    font-size: 1.05em;
+  }
+
+  small {
+    padding-left: 1.2em;
+    font-size: 0.95em;
+  }
+}
+
 .ticketNotas {
   padding: 0.4rem 0;
   border-bottom: 1px dashed #555;

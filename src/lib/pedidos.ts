@@ -31,12 +31,16 @@ export type PedidoItem = {
   adiciones: AdicionSeleccionada[] | null;
 };
 
+export type EstadoMesa = "abierta" | "cerrada";
+
 export type MesaAbierta = {
   id: string;
   mesa: number;
   mesero_user_id: string;
   mesero_nombre: string;
   abierta_at: string;
+  estado: EstadoMesa;
+  cerrada_at: string | null;
 };
 
 export type Pedido = {
@@ -57,6 +61,10 @@ export type Pedido = {
   created_at: string;
   updated_at: string;
   pedido_items: PedidoItem[];
+};
+
+export type MesaCerrada = MesaAbierta & {
+  pedidos: Pedido[];
 };
 
 export const ESTADO_LABEL: Record<EstadoPedido, string> = {

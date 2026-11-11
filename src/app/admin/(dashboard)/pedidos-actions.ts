@@ -77,15 +77,35 @@ export async function cerrarMesa(mesa: number): Promise<EstadoResult> {
   }
 
   const supabase = createAdminClient();
-  const { error } = await supabase.rpc("cerrar_mesa", { p_mesa: mesa });
+  const { data, error } = await supabase.rpc("cerrar_mesa", { p_mesa: mesa });
 
   if (error) {
     console.error("[cerrarMesa]", error);
     return { ok: false, error: "No se pudo cerrar la mesa." };
   }
 
+  if (data !== true) {
+    return { ok: false, error: "La mesa ya no está abierta." };
+  }
+
   revalidatePath("/admin");
   revalidatePath("/mesero");
+
+  return { ok: true };
+}
+
+export async function limpiarHistorialMesas(): Promise<EstadoResult> {
+  await requireAdmin();
+
+  const supabase = createAdminClient();
+  const { error } = await supabase.rpc("limpiar_historial_mesas");
+
+  if (error) {
+    console.error("[limpiarHistorialMesas]", error);
+    return { ok: false, error: "No se pudo borrar el historial." };
+  }
+
+  revalidatePath("/admin");
 
   return { ok: true };
 }
