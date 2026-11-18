@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  entradaPantalla,
+  entradaSalida,
+  transicionSuave,
+} from "@/components/animacion";
 import Dialogo from "@/components/Dialogo";
 import { createClient } from "@/lib/supabase/client";
 import { formatearPrecio } from "@/lib/format";
@@ -98,22 +104,49 @@ export default function MeseroCliente({
 
   useEffect(() => {
     const supabase = createClient("mesero");
-    const channel = supabase
-      .channel("mesero-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedidos" },
-        () => router.refresh(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mesas_abiertas" },
-        () => router.refresh(),
-      )
-      .subscribe();
+    let activo = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function suscribir() {
+      const { data } = await supabase.auth.getSession();
+      if (!activo) return;
+
+      if (data.session?.access_token) {
+        supabase.realtime.setAuth(data.session.access_token);
+      }
+
+      channel = supabase
+        .channel("mesero-live")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "pedidos" },
+          () => router.refresh(),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "mesas_abiertas" },
+          () => router.refresh(),
+        )
+        .subscribe((status: string) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn("[mesero realtime]", status);
+          }
+        });
+    }
+
+    function alVolver() {
+      if (document.visibilityState === "visible") {
+        router.refresh();
+      }
+    }
+
+    void suscribir();
+    document.addEventListener("visibilitychange", alVolver);
 
     return () => {
-      supabase.removeChannel(channel);
+      activo = false;
+      document.removeEventListener("visibilitychange", alVolver);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [router]);
 
@@ -502,9 +535,19 @@ export default function MeseroCliente({
         </p>
       ) : null}
 
-      {vista === "mesas" ? (
-        <section className={styles.mesasPanel} aria-label="Mesas">
-          <div className={styles.mesasGrid}>
+      <AnimatePresence mode="wait" initial={false}>
+        {vista === "mesas" ? (
+          <motion.section
+            key="mesas"
+            variants={entradaPantalla}
+            initial="oculto"
+            animate="visible"
+            exit="salida"
+            transition={transicionSuave}
+            className={styles.mesasPanel}
+            aria-label="Mesas"
+          >
+            <div className={styles.mesasGrid}>
             {MESAS.map((numero) => {
               const sesion = sesionesPorMesa.get(numero);
               const propia = sesion?.mesero_user_id === meseroId;
@@ -513,8 +556,13 @@ export default function MeseroCliente({
               const abriendo = abriendoMesa === numero;
 
               return (
-                <button
+                <motion.button
                   key={numero}
+                  layout
+                  variants={entradaSalida}
+                  initial="oculto"
+                  animate="visible"
+                  transition={transicionSuave}
                   type="button"
                   className={`${styles.mesaCard} ${
                     propia
@@ -559,14 +607,25 @@ export default function MeseroCliente({
                       {abriendo ? "Abriendo…" : "Abrir"}
                     </span>
                   ) : null}
-                </button>
+                </motion.button>
               );
             })}
-          </div>
-        </section>
-      ) : (
-        <>
-          <div className={styles.vistas} role="group" aria-label="Vista de mesero">
+            </div>
+          </motion.section>
+        ) : (
+          <motion.div
+            key={vista}
+            variants={entradaPantalla}
+            initial="oculto"
+            animate="visible"
+            exit="salida"
+            transition={transicionSuave}
+          >
+            <div
+              className={styles.vistas}
+              role="group"
+              aria-label="Vista de mesero"
+            >
             <button
               type="button"
               className={`${styles.vista} ${
@@ -667,7 +726,14 @@ export default function MeseroCliente({
                 </p>
               ) : (
                 <div className={styles.pedidosGrid}>
-                  <article className={styles.pedido}>
+                  <motion.article
+                    layout
+                    variants={entradaSalida}
+                    initial="oculto"
+                    animate="visible"
+                    transition={transicionSuave}
+                    className={styles.pedido}
+                  >
                     <header>
                       <strong>#{pedidoActual.numero}</strong>
                       <span
@@ -684,33 +750,43 @@ export default function MeseroCliente({
                         : null}
                     </p>
                     <ul>
-                      {pedidoActual.pedido_items.map((item) => (
-                        <li key={item.id}>
-                          <span>
-                            <strong>{item.cantidad}×</strong> {item.nombre}
-                            {item.opciones && item.opciones.length > 0 ? (
-                              <small>
-                                {item.opciones
-                                  .map(
-                                    (opcion) =>
-                                      `${opcion.subcategoria}: ${opcion.opcion}`,
-                                  )
-                                  .join(" · ")}
-                              </small>
-                            ) : null}
-                            {item.adiciones && item.adiciones.length > 0 ? (
-                              <small>
-                                {item.adiciones
-                                  .map((adicion) => `+ ${adicion.nombre}`)
-                                  .join(" · ")}
-                              </small>
-                            ) : null}
-                          </span>
-                          <span>
-                            {formatearPrecio(item.precio * item.cantidad)}
-                          </span>
-                        </li>
-                      ))}
+                      <AnimatePresence initial={false}>
+                        {pedidoActual.pedido_items.map((item) => (
+                          <motion.li
+                            key={item.id}
+                            layout
+                            variants={entradaSalida}
+                            initial="oculto"
+                            animate="visible"
+                            exit="salida"
+                            transition={transicionSuave}
+                          >
+                            <span>
+                              <strong>{item.cantidad}×</strong> {item.nombre}
+                              {item.opciones && item.opciones.length > 0 ? (
+                                <small>
+                                  {item.opciones
+                                    .map(
+                                      (opcion) =>
+                                        `${opcion.subcategoria}: ${opcion.opcion}`,
+                                    )
+                                    .join(" · ")}
+                                </small>
+                              ) : null}
+                              {item.adiciones && item.adiciones.length > 0 ? (
+                                <small>
+                                  {item.adiciones
+                                    .map((adicion) => `+ ${adicion.nombre}`)
+                                    .join(" · ")}
+                                </small>
+                              ) : null}
+                            </span>
+                            <span>
+                              {formatearPrecio(item.precio * item.cantidad)}
+                            </span>
+                          </motion.li>
+                        ))}
+                      </AnimatePresence>
                     </ul>
                     {pedidoActual.notas ? (
                       <p className={styles.notas}>{pedidoActual.notas}</p>
@@ -719,13 +795,14 @@ export default function MeseroCliente({
                       <span>Total</span>
                       <strong>{formatearPrecio(pedidoActual.total)}</strong>
                     </footer>
-                  </article>
+                  </motion.article>
                 </div>
               )}
             </section>
           )}
-        </>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {vista !== "mesas" && puedoOperar ? (
         <div className={styles.barra}>
