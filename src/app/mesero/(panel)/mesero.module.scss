@@ -327,7 +327,36 @@
     &:hover {
       background: #1f5b37;
     }
+
+    &:disabled {
+      background: var(--gris);
+      cursor: not-allowed;
+    }
   }
+}
+
+.platoAgotado {
+  opacity: 0.58;
+  filter: grayscale(0.75);
+  background: var(--crema);
+
+  h3,
+  strong {
+    color: var(--gris);
+  }
+}
+
+.badgeAgotado {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0.14rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(164, 48, 48, 0.12);
+  color: #a43030;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .mesaActual {
@@ -666,6 +695,19 @@
   }
 }
 
+.lineaAgotada {
+  opacity: 0.62;
+  filter: grayscale(0.7);
+
+  strong {
+    text-decoration: line-through;
+  }
+
+  .badgeAgotado {
+    margin-left: 0.4rem;
+  }
+}
+
 .lineaAcciones {
   display: flex;
   align-items: flex-start;
@@ -853,6 +895,17 @@
   background: rgba(192, 57, 43, 0.08);
   color: var(--rojo);
   font-size: 0.85rem;
+}
+
+.avisoAgotados {
+  margin-bottom: 0.8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  border-radius: 8px;
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--rojo);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .resumen {

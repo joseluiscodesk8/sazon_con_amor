@@ -47,6 +47,13 @@ type Linea = {
 
 type Vista = "mesas" | "pedido" | "mesa";
 
+type PayloadDisponibilidad = {
+  new: {
+    id?: unknown;
+    disponible?: unknown;
+  };
+};
+
 const ACTIVOS: EstadoPedido[] = ["nuevo", "en_preparacion", "listo"];
 const MESAS = Array.from({ length: 60 }, (_, indice) => indice + 1);
 
@@ -79,6 +86,27 @@ function nombreMesa(numero: number) {
   return `Mesa ${numero}`;
 }
 
+function disponibilidadInicial(menu: Menu) {
+  const platos: Record<string, boolean> = {};
+  const adiciones: Record<string, boolean> = {};
+
+  for (const categoria of menu) {
+    for (const plato of categoria.platos) {
+      platos[plato.id] = plato.disponible;
+      for (const subcategoria of plato.subcategorias) {
+        for (const opcion of subcategoria.opciones) {
+          platos[opcion.id] ??= true;
+        }
+      }
+      for (const adicion of plato.adiciones) {
+        adiciones[adicion.id] = true;
+      }
+    }
+  }
+
+  return { platos, adiciones };
+}
+
 export default function MeseroCliente({
   menu,
   pedidos,
@@ -92,7 +120,7 @@ export default function MeseroCliente({
   const [lineas, setLineas] = useState<Record<string, Linea>>({});
   const [notas, setNotas] = useState("");
   const [carritoAbierto, setCarritoAbierto] = useState(false);
-  const [platoAbierto, setPlatoAbierto] = useState<Plato | null>(null);
+  const [platoAbiertoId, setPlatoAbiertoId] = useState<string | null>(null);
   const [selecciones, setSelecciones] = useState<Record<string, string>>({});
   const [adicionesSel, setAdicionesSel] = useState<string[]>([]);
   const [abriendoMesa, setAbriendoMesa] = useState<number | null>(null);
@@ -101,6 +129,17 @@ export default function MeseroCliente({
   const [pending, startTransition] = useTransition();
   const idempotenciaRef = useRef<string | null>(null);
   const teniaSesionRef = useRef(false);
+
+  const disponibilidad = useMemo(() => disponibilidadInicial(menu), [menu]);
+  const [menuPrevio, setMenuPrevio] = useState(menu);
+  const [dispPlatos, setDispPlatos] = useState(disponibilidad.platos);
+  const [dispAdiciones, setDispAdiciones] = useState(disponibilidad.adiciones);
+
+  if (menu !== menuPrevio) {
+    setMenuPrevio(menu);
+    setDispPlatos(disponibilidad.platos);
+    setDispAdiciones(disponibilidad.adiciones);
+  }
 
   useEffect(() => {
     const supabase = createClient("mesero");
@@ -126,6 +165,31 @@ export default function MeseroCliente({
           "postgres_changes",
           { event: "*", schema: "public", table: "mesas_abiertas" },
           () => router.refresh(),
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "platos" },
+          (payload: PayloadDisponibilidad) => {
+            const id = payload.new.id;
+            const disponible = payload.new.disponible;
+            if (typeof id === "string" && typeof disponible === "boolean") {
+              setDispPlatos((actuales) => ({ ...actuales, [id]: disponible }));
+            }
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "adiciones" },
+          (payload: PayloadDisponibilidad) => {
+            const id = payload.new.id;
+            const disponible = payload.new.disponible;
+            if (typeof id === "string" && typeof disponible === "boolean") {
+              setDispAdiciones((actuales) => ({
+                ...actuales,
+                [id]: disponible,
+              }));
+            }
+          },
         )
         .subscribe((status: string) => {
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -154,13 +218,59 @@ export default function MeseroCliente({
     idempotenciaRef.current = null;
   }, [lineas, notas, mesa]);
 
+  const menuVivo = useMemo<Menu>(
+    () =>
+      menu.map((categoria) => ({
+        ...categoria,
+        platos: categoria.platos.map((plato) => {
+          const subcategorias = plato.subcategorias.map((subcategoria) => ({
+            ...subcategoria,
+            opciones: subcategoria.opciones.filter(
+              (opcion) => dispPlatos[opcion.id] ?? true,
+            ),
+          }));
+          const sinOpciones = subcategorias.some(
+            (subcategoria) => subcategoria.opciones.length === 0,
+          );
+
+          return {
+            ...plato,
+            disponible:
+              (dispPlatos[plato.id] ?? plato.disponible) && !sinOpciones,
+            subcategorias,
+            adiciones: plato.adiciones.filter(
+              (adicion) => dispAdiciones[adicion.id] ?? true,
+            ),
+          };
+        }),
+      })),
+    [menu, dispPlatos, dispAdiciones],
+  );
+
   const platosPorId = useMemo(() => {
     const mapa = new Map<string, Plato>();
-    menu.forEach((categoria) =>
+    menuVivo.forEach((categoria) =>
       categoria.platos.forEach((plato) => mapa.set(plato.id, plato)),
     );
     return mapa;
-  }, [menu]);
+  }, [menuVivo]);
+
+  const adicionesVivas = useMemo(
+    () =>
+      new Set(
+        menuVivo.flatMap((categoria) =>
+          categoria.platos.flatMap((plato) =>
+            plato.adiciones.map((adicion) => adicion.id),
+          ),
+        ),
+      ),
+    [menuVivo],
+  );
+
+  const platoAbierto = useMemo(
+    () => (platoAbiertoId ? platosPorId.get(platoAbiertoId) ?? null : null),
+    [platoAbiertoId, platosPorId],
+  );
 
   const sesionesPorMesa = useMemo(
     () =>
@@ -217,7 +327,7 @@ export default function MeseroCliente({
     setLineas({});
     setNotas("");
     setCarritoAbierto(false);
-    setPlatoAbierto(null);
+    setPlatoAbiertoId(null);
     setSelecciones({});
     setAdicionesSel([]);
     setError(
@@ -228,6 +338,20 @@ export default function MeseroCliente({
   }, [mesa, meseroId, sesionActual, vista]);
 
   const lineasTotales = useMemo(() => Object.values(lineas), [lineas]);
+
+  function lineaAgotada(linea: Linea) {
+    if (!platosPorId.get(linea.platoId)?.disponible) return true;
+    if (
+      linea.opciones.some(
+        (opcion) => (dispPlatos[opcion.opcion_id] ?? true) === false,
+      )
+    ) {
+      return true;
+    }
+    return linea.adiciones.some((adicion) => !adicionesVivas.has(adicion.id));
+  }
+
+  const hayAgotados = lineasTotales.some(lineaAgotada);
 
   const cantidadTotal = useMemo(
     () => lineasTotales.reduce((total, linea) => total + linea.cantidad, 0),
@@ -247,7 +371,7 @@ export default function MeseroCliente({
   function limpiarCarrito() {
     setLineas({});
     setCarritoAbierto(false);
-    setPlatoAbierto(null);
+    setPlatoAbiertoId(null);
     setSelecciones({});
     setAdicionesSel([]);
   }
@@ -335,6 +459,8 @@ export default function MeseroCliente({
   }
 
   function abrirPlato(plato: Plato) {
+    if (!plato.disponible) return;
+
     const iniciales: Record<string, string> = {};
     for (const subcategoria of plato.subcategorias) {
       iniciales[subcategoria.id] = subcategoria.opciones[0]?.id ?? "";
@@ -342,7 +468,7 @@ export default function MeseroCliente({
 
     setSelecciones(iniciales);
     setAdicionesSel([]);
-    setPlatoAbierto(plato);
+    setPlatoAbiertoId(plato.id);
   }
 
   function agregarLinea(
@@ -371,6 +497,7 @@ export default function MeseroCliente({
   }
 
   function agregarRapido(plato: Plato) {
+    if (!plato.disponible) return;
     if (plato.subcategorias.length > 0 || plato.adiciones.length > 0) {
       abrirPlato(plato);
       return;
@@ -379,14 +506,14 @@ export default function MeseroCliente({
   }
 
   function agregarDesdeModal() {
-    if (!platoAbierto) return;
+    if (!platoAbierto || !platoAbierto.disponible) return;
 
     const adiciones = platoAbierto.adiciones.filter((adicion) =>
       adicionesSel.includes(adicion.id),
     );
 
     agregarLinea(platoAbierto.id, opcionesDe(platoAbierto), adiciones);
-    setPlatoAbierto(null);
+    setPlatoAbiertoId(null);
   }
 
   function ajustarCantidad(key: string, delta: number) {
@@ -440,6 +567,12 @@ export default function MeseroCliente({
     }
     if (lineasTotales.length === 0) {
       setError("Agrega al menos un plato.");
+      return;
+    }
+    if (hayAgotados) {
+      setError(
+        "Hay platos agotados en el carrito. Quítalos o cámbialos antes de enviar.",
+      );
       return;
     }
 
@@ -665,12 +798,17 @@ export default function MeseroCliente({
                 </p>
               ) : null}
 
-              {menu.map((categoria) => (
+              {menuVivo.map((categoria) => (
                 <section key={categoria.id} className={styles.categoria}>
                   <h2>{categoria.nombre}</h2>
                   <div className={styles.grid}>
                     {categoria.platos.map((plato) => (
-                      <article key={plato.id} className={styles.plato}>
+                      <article
+                        key={plato.id}
+                        className={`${styles.plato} ${
+                          plato.disponible ? "" : styles.platoAgotado
+                        }`}
+                      >
                         <div>
                           <h3>{plato.nombre}</h3>
                           {plato.descripcion ? (
@@ -678,10 +816,26 @@ export default function MeseroCliente({
                           ) : null}
                           <strong>{formatearPrecio(plato.precio)}</strong>
                         </div>
+                        <AnimatePresence initial={false}>
+                          {plato.disponible ? null : (
+                            <motion.span
+                              key="agotado"
+                              className={styles.badgeAgotado}
+                              variants={entradaSalida}
+                              initial="oculto"
+                              animate="visible"
+                              exit="salida"
+                              transition={transicionSuave}
+                            >
+                              Agotado
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
                         <button
                           type="button"
                           onClick={() => agregarRapido(plato)}
                           aria-label={`Agregar ${plato.nombre}`}
+                          disabled={!plato.disponible}
                         >
                           {plato.subcategorias.length > 0 ||
                           plato.adiciones.length > 0
@@ -819,6 +973,9 @@ export default function MeseroCliente({
               {cantidadTotal > 0 ? (
                 <span className={styles.badge}>{cantidadTotal}</span>
               ) : null}
+              {hayAgotados ? (
+                <span className={styles.badgeAgotado}>Agotado</span>
+              ) : null}
             </span>
             <strong>{formatearPrecio(total)}</strong>
           </button>
@@ -829,7 +986,7 @@ export default function MeseroCliente({
         <Dialogo
           id="mesero-plato"
           etiquetadoPor="mesero-plato-titulo"
-          onCerrar={() => setPlatoAbierto(null)}
+          onCerrar={() => setPlatoAbiertoId(null)}
           overlayClassName={styles.overlay}
           panelClassName={styles.modal}
         >
@@ -845,11 +1002,14 @@ export default function MeseroCliente({
                 {platoAbierto.descripcion ? (
                   <p>{platoAbierto.descripcion}</p>
                 ) : null}
+                {platoAbierto.disponible ? null : (
+                  <span className={styles.badgeAgotado}>Agotado</span>
+                )}
               </div>
               <button
                 type="button"
                 className={styles.cerrar}
-                onClick={() => setPlatoAbierto(null)}
+                onClick={() => setPlatoAbiertoId(null)}
                 aria-label="Cerrar"
               >
                 ×
@@ -906,7 +1066,11 @@ export default function MeseroCliente({
               </fieldset>
             ) : null}
 
-            <button type="submit" className={styles.primario}>
+            <button
+              type="submit"
+              className={styles.primario}
+              disabled={!platoAbierto.disponible}
+            >
               Agregar · {formatearPrecio(precioModal)}
             </button>
           </form>
@@ -964,10 +1128,29 @@ export default function MeseroCliente({
               <ul className={styles.lineas}>
                 {lineasTotales.map((linea) => {
                   const plato = platosPorId.get(linea.platoId);
+                  const agotada = lineaAgotada(linea);
                   return (
-                    <li key={linea.key}>
+                    <li
+                      key={linea.key}
+                      className={agotada ? styles.lineaAgotada : ""}
+                    >
                       <div>
                         <strong>{plato?.nombre ?? "Plato"}</strong>
+                        <AnimatePresence initial={false}>
+                          {agotada ? (
+                            <motion.span
+                              key="agotado"
+                              className={styles.badgeAgotado}
+                              variants={entradaSalida}
+                              initial="oculto"
+                              animate="visible"
+                              exit="salida"
+                              transition={transicionSuave}
+                            >
+                              Agotado
+                            </motion.span>
+                          ) : null}
+                        </AnimatePresence>
                         {linea.opciones.length > 0 ? (
                           <small>
                             {linea.opciones
@@ -1008,13 +1191,13 @@ export default function MeseroCliente({
                                 fijarCantidad(linea.key, valor);
                               }
                             }}
-                            disabled={pending}
+                            disabled={pending || agotada}
                             aria-label={`Cantidad de ${plato?.nombre ?? "plato"}`}
                           />
                           <button
                             type="button"
                             onClick={() => ajustarCantidad(linea.key, 1)}
-                            disabled={pending}
+                            disabled={pending || agotada}
                             aria-label={`Agregar uno de ${plato?.nombre ?? "plato"}`}
                           >
                             +
@@ -1045,6 +1228,13 @@ export default function MeseroCliente({
               </p>
             ) : null}
 
+            {hayAgotados ? (
+              <p className={styles.avisoAgotados} role="status">
+                Hay platos agotados en el carrito. Quítalos o cámbialos antes de
+                enviar.
+              </p>
+            ) : null}
+
             <div className={styles.resumen}>
               <span>
                 {pedidoActual ? "Nuevos platos" : "Total"}{" "}
@@ -1054,7 +1244,10 @@ export default function MeseroCliente({
                 type="submit"
                 className={styles.primario}
                 disabled={
-                  pending || lineasTotales.length === 0 || !puedoOperar
+                  pending ||
+                  lineasTotales.length === 0 ||
+                  hayAgotados ||
+                  !puedoOperar
                 }
               >
                 {pending

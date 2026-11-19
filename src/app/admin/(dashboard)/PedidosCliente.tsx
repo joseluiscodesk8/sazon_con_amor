@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { entradaSalida, transicionSuave } from "@/components/animacion";
@@ -28,6 +35,164 @@ type Filtro = "todos" | TipoPedido | "mesero";
 
 const ACTIVOS: EstadoPedido[] = ["nuevo", "en_preparacion", "listo", "en_camino"];
 
+type AvisoPedido = {
+  id: string;
+  numero: number;
+  tipo: TipoPedido;
+  origen: Pedido["origen"];
+  mesa: number | null;
+  cliente: string;
+  total: number;
+};
+
+type PayloadPedido = {
+  eventType: string;
+  new: {
+    id?: unknown;
+    numero?: unknown;
+    tipo?: unknown;
+    origen?: unknown;
+    mesa?: unknown;
+    cliente_nombre?: unknown;
+    total?: unknown;
+  };
+};
+
+function Aviso({
+  aviso,
+  onCerrar,
+}: {
+  aviso: AvisoPedido;
+  onCerrar: (id: string) => void;
+}) {
+  useEffect(() => {
+    const temporizador = window.setTimeout(() => onCerrar(aviso.id), 6000);
+    return () => window.clearTimeout(temporizador);
+  }, [aviso.id, onCerrar]);
+
+  return (
+    <motion.div
+      layout
+      variants={entradaSalida}
+      initial="oculto"
+      animate="visible"
+      exit="salida"
+      transition={transicionSuave}
+      className={styles.aviso}
+    >
+      <div className={styles.avisoCuerpo}>
+        <strong>Pedido #{aviso.numero}</strong>
+        <span>
+          {aviso.tipo === "domicilio"
+            ? "Domicilio"
+            : aviso.mesa != null
+              ? `Mesa ${aviso.mesa}`
+              : "Restaurante"}
+          {aviso.origen === "mesero" ? " · Mesero" : ""} · {aviso.cliente}
+        </span>
+      </div>
+      <strong>{formatearPrecio(aviso.total)}</strong>
+      <button
+        type="button"
+        className={styles.avisoCerrar}
+        onClick={() => onCerrar(aviso.id)}
+        aria-label="Cerrar aviso"
+      >
+        ×
+      </button>
+    </motion.div>
+  );
+}
+
+function Avisos({
+  avisos,
+  onCerrar,
+}: {
+  avisos: AvisoPedido[];
+  onCerrar: (id: string) => void;
+}) {
+  const audioRef = useRef<AudioContext | null>(null);
+  const vistosRef = useRef<Set<string>>(new Set());
+  const [sonido, setSonido] = useState(true);
+
+  useEffect(() => {
+    function desbloquear() {
+      if (
+        (!audioRef.current || audioRef.current.state === "closed") &&
+        window.AudioContext
+      ) {
+        audioRef.current = new window.AudioContext();
+      }
+      if (audioRef.current?.state === "suspended") {
+        void audioRef.current.resume().catch(() => {});
+      }
+    }
+
+    window.addEventListener("pointerdown", desbloquear);
+    window.addEventListener("keydown", desbloquear);
+    return () => {
+      window.removeEventListener("pointerdown", desbloquear);
+      window.removeEventListener("keydown", desbloquear);
+      const contexto = audioRef.current;
+      if (contexto && contexto.state !== "closed") {
+        void contexto.close().catch(() => {});
+      }
+      audioRef.current = null;
+    };
+  }, []);
+
+  const reproducir = useCallback(() => {
+    const contexto = audioRef.current;
+    if (!contexto || contexto.state === "closed") return;
+    if (contexto.state === "suspended") {
+      void contexto.resume().catch(() => {});
+    }
+
+    const inicio = contexto.currentTime;
+    [880, 1174].forEach((frecuencia, indice) => {
+      const oscilador = contexto.createOscillator();
+      const ganancia = contexto.createGain();
+      const momento = inicio + indice * 0.16;
+
+      oscilador.type = "sine";
+      oscilador.frequency.value = frecuencia;
+      ganancia.gain.setValueAtTime(0.0001, momento);
+      ganancia.gain.exponentialRampToValueAtTime(0.12, momento + 0.02);
+      ganancia.gain.exponentialRampToValueAtTime(0.0001, momento + 0.13);
+      oscilador.connect(ganancia);
+      ganancia.connect(contexto.destination);
+      oscilador.start(momento);
+      oscilador.stop(momento + 0.14);
+    });
+  }, []);
+
+  useEffect(() => {
+    for (const aviso of avisos) {
+      if (vistosRef.current.has(aviso.id)) continue;
+      vistosRef.current.add(aviso.id);
+      if (sonido) reproducir();
+    }
+  }, [avisos, reproducir, sonido]);
+
+  return (
+    <div className={styles.avisos}>
+      <button
+        type="button"
+        className={styles.avisoSonido}
+        onClick={() => setSonido((actual) => !actual)}
+        aria-label={sonido ? "Silenciar avisos" : "Activar sonido de avisos"}
+      >
+        {sonido ? "Sonido on" : "Sonido off"}
+      </button>
+      <AnimatePresence initial={false}>
+        {avisos.map((aviso) => (
+          <Aviso key={aviso.id} aviso={aviso} onCerrar={onCerrar} />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function PedidosCliente({
   pedidos,
   mesasAbiertas,
@@ -48,6 +213,12 @@ export default function PedidosCliente({
     null,
   );
   const [, startTransition] = useTransition();
+  const [avisos, setAvisos] = useState<AvisoPedido[]>([]);
+  const pedidosVistosRef = useRef<Set<string>>(new Set());
+
+  const cerrarAviso = useCallback((id: string) => {
+    setAvisos((actuales) => actuales.filter((aviso) => aviso.id !== id));
+  }, []);
 
   if (mesasAbiertas !== mesasPrevias) {
     setMesasPrevias(mesasAbiertas);
@@ -74,7 +245,38 @@ export default function PedidosCliente({
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "pedidos" },
-          () => router.refresh(),
+          (payload: PayloadPedido) => {
+            router.refresh();
+            if (payload.eventType !== "INSERT") return;
+
+            const fila = payload.new;
+            const id = fila.id;
+            const numero = fila.numero;
+            if (
+              typeof id !== "string" ||
+              typeof numero !== "number" ||
+              pedidosVistosRef.current.has(id)
+            ) {
+              return;
+            }
+            pedidosVistosRef.current.add(id);
+
+            setAvisos((actuales) => [
+              ...actuales,
+              {
+                id,
+                numero,
+                tipo: fila.tipo === "domicilio" ? "domicilio" : "restaurante",
+                origen: fila.origen === "mesero" ? "mesero" : "cliente",
+                mesa: typeof fila.mesa === "number" ? fila.mesa : null,
+                cliente:
+                  typeof fila.cliente_nombre === "string"
+                    ? fila.cliente_nombre
+                    : "Cliente",
+                total: typeof fila.total === "number" ? fila.total : 0,
+              },
+            ]);
+          },
         )
         .on(
           "postgres_changes",
@@ -455,6 +657,7 @@ export default function PedidosCliente({
 
   return (
     <div className={styles.page}>
+      <Avisos avisos={avisos} onCerrar={cerrarAviso} />
       <div className={styles.head}>
         <div>
           <h1 className={styles.title}>Pedidos</h1>
