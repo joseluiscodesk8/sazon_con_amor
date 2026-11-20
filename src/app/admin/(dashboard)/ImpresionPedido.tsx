@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Dialogo from "@/components/Dialogo";
+import { IconoImprimir } from "@/components/Iconos";
 import { formatearPrecio } from "@/lib/format";
 import type { Pedido } from "@/lib/pedidos";
 import styles from "./ticket.module.scss";
@@ -121,8 +122,10 @@ export default function ImpresionPedido({
         onClick={() => setAbierto(true)}
         aria-haspopup="dialog"
         aria-controls={idDialogo}
+        aria-label={`Imprimir pedido #${pedido.numero}`}
       >
-        Imprimir
+        <IconoImprimir />
+        <span className={styles.textoAccion}>Imprimir</span>
       </button>
 
       {abierto ? (

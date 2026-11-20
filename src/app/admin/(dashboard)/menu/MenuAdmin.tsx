@@ -3,6 +3,13 @@
 import { useId, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import Dialogo from "@/components/Dialogo";
+import {
+  IconoAgotado,
+  IconoAnadir,
+  IconoDisponible,
+  IconoEditar,
+  IconoEliminar,
+} from "@/components/Iconos";
 import { useRouter } from "next/navigation";
 import { formatearPrecio } from "@/lib/format";
 import { comprimirImagen } from "@/lib/imagen";
@@ -212,19 +219,28 @@ export default function MenuAdmin({
               <button
                 type="button"
                 onClick={() => abrirNuevaOpcion(categoria)}
+                aria-label={`Nueva opción en ${categoria.nombre}`}
               >
-                + Opción
+                <IconoAnadir />
+                <span className={styles.textoAccion}>+ Opción</span>
               </button>
             ) : null}
-            <button type="button" onClick={() => abrirEditarCategoria(categoria)}>
-              Editar
+            <button
+              type="button"
+              onClick={() => abrirEditarCategoria(categoria)}
+              aria-label={`Editar categoría ${categoria.nombre}`}
+            >
+              <IconoEditar />
+              <span className={styles.textoAccion}>Editar</span>
             </button>
             <button
               type="button"
               className={styles.danger}
               onClick={() => onEliminarCategoria(categoria)}
+              aria-label={`Eliminar categoría ${categoria.nombre}`}
             >
-              Eliminar
+              <IconoEliminar />
+              <span className={styles.textoAccion}>Eliminar</span>
             </button>
           </div>
         </header>
@@ -266,18 +282,33 @@ export default function MenuAdmin({
                   <button
                     type="button"
                     onClick={() => onToggleDisponible(plato)}
+                    aria-label={
+                      plato.disponible
+                        ? `Marcar ${plato.nombre} como agotado`
+                        : `Marcar ${plato.nombre} como disponible`
+                    }
                   >
-                    {plato.disponible ? "Marcar agotado" : "Marcar disponible"}
+                    {plato.disponible ? <IconoAgotado /> : <IconoDisponible />}
+                    <span className={styles.textoAccion}>
+                      {plato.disponible ? "Marcar agotado" : "Marcar disponible"}
+                    </span>
                   </button>
-                  <button type="button" onClick={() => abrirEditarPlato(plato)}>
-                    Editar
+                  <button
+                    type="button"
+                    onClick={() => abrirEditarPlato(plato)}
+                    aria-label={`Editar ${plato.nombre}`}
+                  >
+                    <IconoEditar />
+                    <span className={styles.textoAccion}>Editar</span>
                   </button>
                   <button
                     type="button"
                     className={styles.danger}
                     onClick={() => onEliminarPlato(plato)}
+                    aria-label={`Eliminar ${plato.nombre}`}
                   >
-                    Eliminar
+                    <IconoEliminar />
+                    <span className={styles.textoAccion}>Eliminar</span>
                   </button>
                 </div>
               </li>
@@ -391,23 +422,39 @@ export default function MenuAdmin({
                       <button
                         type="button"
                         onClick={() => onToggleDisponibleAdicion(adicion)}
+                        aria-label={
+                          adicion.disponible
+                            ? `Marcar ${adicion.nombre} como agotada`
+                            : `Marcar ${adicion.nombre} como disponible`
+                        }
                       >
-                        {adicion.disponible
-                          ? "Marcar agotada"
-                          : "Marcar disponible"}
+                        {adicion.disponible ? (
+                          <IconoAgotado />
+                        ) : (
+                          <IconoDisponible />
+                        )}
+                        <span className={styles.textoAccion}>
+                          {adicion.disponible
+                            ? "Marcar agotada"
+                            : "Marcar disponible"}
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setAdicionModal(adicion)}
+                        aria-label={`Editar adición ${adicion.nombre}`}
                       >
-                        Editar
+                        <IconoEditar />
+                        <span className={styles.textoAccion}>Editar</span>
                       </button>
                       <button
                         type="button"
                         className={styles.danger}
                         onClick={() => onEliminarAdicion(adicion)}
+                        aria-label={`Eliminar adición ${adicion.nombre}`}
                       >
-                        Eliminar
+                        <IconoEliminar />
+                        <span className={styles.textoAccion}>Eliminar</span>
                       </button>
                     </div>
                   </li>

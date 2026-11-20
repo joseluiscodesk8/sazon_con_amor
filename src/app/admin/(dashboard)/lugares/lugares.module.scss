@@ -107,9 +107,15 @@
 
 .buttons {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.4rem;
 
   button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
     border: 1px solid var(--borde);
     background: var(--blanco);
     border-radius: 8px;
@@ -121,6 +127,10 @@
       border-color: var(--naranja);
     }
   }
+}
+
+.textoAccion {
+  display: inline;
 }
 
 .danger {
@@ -214,5 +224,22 @@
     width: 16px;
     height: 16px;
     accent-color: var(--verde);
+  }
+}
+
+@media (max-width: 480px) {
+  .textoAccion {
+    display: none;
+  }
+
+  .buttons {
+    gap: 0.35rem;
+
+    button {
+      width: 2.5rem;
+      height: 2.5rem;
+      padding: 0;
+      flex: 0 0 auto;
+    }
   }
 }

@@ -171,6 +171,10 @@
 }
 
 .eliminar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   margin-left: auto;
   flex: none;
   padding: 0.4rem 0.65rem;
@@ -191,6 +195,10 @@
   }
 }
 
+.textoAccion {
+  display: inline;
+}
+
 .vacio {
   padding: 2.5rem 0;
   color: var(--gris);
@@ -209,7 +217,14 @@
     flex-wrap: wrap;
   }
 
+  .textoAccion {
+    display: none;
+  }
+
   .eliminar {
-    margin-left: 3.15rem;
+    margin-left: auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
   }
 }

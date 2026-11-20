@@ -4,6 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Dialogo from "@/components/Dialogo";
 import {
+  IconoEditar,
+  IconoEliminar,
+  IconoMostrar,
+  IconoOcultar,
+} from "@/components/Iconos";
+import {
   cambiarActivoLugar,
   eliminarLugar,
   guardarLugar,
@@ -98,18 +104,36 @@ export default function LugaresAdmin({ lugares }: Props) {
                 ) : null}
               </div>
               <div className={styles.buttons}>
-                <button type="button" onClick={() => onToggle(lugar)}>
-                  {lugar.activo ? "Ocultar" : "Mostrar"}
+                <button
+                  type="button"
+                  onClick={() => onToggle(lugar)}
+                  aria-label={
+                    lugar.activo
+                      ? `Ocultar ${lugar.nombre}`
+                      : `Mostrar ${lugar.nombre}`
+                  }
+                >
+                  {lugar.activo ? <IconoOcultar /> : <IconoMostrar />}
+                  <span className={styles.textoAccion}>
+                    {lugar.activo ? "Ocultar" : "Mostrar"}
+                  </span>
                 </button>
-                <button type="button" onClick={() => setModal(lugar)}>
-                  Editar
+                <button
+                  type="button"
+                  onClick={() => setModal(lugar)}
+                  aria-label={`Editar ${lugar.nombre}`}
+                >
+                  <IconoEditar />
+                  <span className={styles.textoAccion}>Editar</span>
                 </button>
                 <button
                   type="button"
                   className={styles.danger}
                   onClick={() => onEliminar(lugar)}
+                  aria-label={`Eliminar ${lugar.nombre}`}
                 >
-                  Eliminar
+                  <IconoEliminar />
+                  <span className={styles.textoAccion}>Eliminar</span>
                 </button>
               </div>
             </li>

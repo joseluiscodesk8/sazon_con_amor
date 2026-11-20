@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { IconoEliminar } from "@/components/Iconos";
 import {
   crearMesero,
   eliminarMesero,
@@ -150,8 +151,10 @@ export default function MeserosAdmin({ meseros }: { meseros: AdminMesero[] }) {
                     className={styles.eliminar}
                     onClick={() => onEliminar(mesero)}
                     disabled={eliminando}
+                    aria-label={`Eliminar mesero ${mesero.nombre || mesero.usuario}`}
                   >
-                    Eliminar
+                    <IconoEliminar />
+                    <span className={styles.textoAccion}>Eliminar</span>
                   </button>
                 </li>
               ))}

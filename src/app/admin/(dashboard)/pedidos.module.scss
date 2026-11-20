@@ -10,6 +10,13 @@
   flex-wrap: wrap;
 }
 
+.headControles {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .title {
   font-size: 1.8rem;
 }
@@ -81,6 +88,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
+}
+
+.mesasWrap {
+  overflow: hidden;
 }
 
 .mesas {
@@ -162,6 +173,41 @@
   margin-bottom: 1.75rem;
 }
 
+.mesasAbiertasHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+
+  .seccionTitulo {
+    margin-bottom: 0;
+  }
+}
+
+.mesasAcciones {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.controlMesas {
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--blanco);
+  color: var(--gris);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.8rem;
+
+  &:hover {
+    border-color: var(--verde);
+    color: var(--verde);
+  }
+}
+
 .abiertasGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -177,6 +223,24 @@
   border: 1px solid var(--borde);
   border-radius: 12px;
   background: var(--crema-oscura);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.abiertaCardSeleccionada {
+  border-color: var(--verde);
+  box-shadow: 0 0 0 2px rgba(46, 125, 78, 0.16);
+}
+
+.abiertaSeleccion {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
 }
 
 .abiertaInfo {
@@ -409,6 +473,10 @@
 }
 
 .accion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   flex: 1;
   min-width: 100px;
   padding: 0.5rem 0.7rem;
@@ -426,6 +494,10 @@
   &:disabled {
     opacity: 0.6;
   }
+}
+
+.textoAccion {
+  display: inline;
 }
 
 .accionCancelar {
@@ -451,73 +523,29 @@
   }
 }
 
-.avisos {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 90;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-  pointer-events: none;
-}
+@media (max-width: 480px) {
+  .headControles {
+    gap: 0.75rem;
+  }
 
-.avisoSonido,
-.aviso {
-  pointer-events: auto;
-}
+  .mesasAcciones {
+    gap: 0.35rem;
+  }
 
-.avisoSonido {
-  padding: 0.35rem 0.6rem;
-  border: 1px solid var(--borde);
-  border-radius: 999px;
-  background: var(--blanco);
-  color: var(--gris);
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-}
+  .textoAccion {
+    display: none;
+  }
 
-.aviso {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 260px;
-  max-width: 340px;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid rgba(46, 125, 78, 0.25);
-  border-radius: 12px;
-  background: var(--blanco);
-  box-shadow: 0 10px 30px rgba(43, 35, 32, 0.16);
+  .acciones {
+    gap: 0.35rem;
+  }
 
-  > strong {
-    color: var(--verde);
-    white-space: nowrap;
+  .accion {
+    flex: 0 0 auto;
+    min-width: 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
   }
 }
 
-.avisoCuerpo {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-
-  strong {
-    font-size: 0.95rem;
-  }
-
-  span {
-    color: var(--gris);
-    font-size: 0.78rem;
-  }
-}
-
-.avisoCerrar {
-  margin-left: auto;
-  border: none;
-  background: transparent;
-  color: var(--gris);
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-}

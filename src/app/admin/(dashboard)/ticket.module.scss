@@ -1,4 +1,8 @@
 .boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   padding: 0.45rem 0.7rem;
   border: 1px solid var(--borde);
   border-radius: 9px;
@@ -11,6 +15,10 @@
     border-color: var(--naranja);
     color: var(--naranja);
   }
+}
+
+.textoAccion {
+  display: inline;
 }
 
 .overlay {
@@ -241,5 +249,18 @@
   .preview {
     max-height: 48vh;
     padding: 0.6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .textoAccion {
+    display: none;
+  }
+
+  .boton {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
   }
 }

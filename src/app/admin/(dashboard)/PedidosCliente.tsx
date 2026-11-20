@@ -1,17 +1,14 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
-import { entradaSalida, transicionSuave } from "@/components/animacion";
-import { createClient } from "@/lib/supabase/client";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
+import {
+  entradaPantalla,
+  entradaSalida,
+  transicionSuave,
+} from "@/components/animacion";
+import { IconoCancelar, IconoEliminar } from "@/components/Iconos";
 import { formatearPrecio } from "@/lib/format";
 import {
   ESTADO_LABEL,
@@ -28,6 +25,7 @@ import {
   eliminarPedido,
   limpiarHistorialMesas,
 } from "./pedidos-actions";
+import { useAvisos } from "./AvisosProvider";
 import ImpresionPedido from "./ImpresionPedido";
 import styles from "./pedidos.module.scss";
 
@@ -35,163 +33,11 @@ type Filtro = "todos" | TipoPedido | "mesero";
 
 const ACTIVOS: EstadoPedido[] = ["nuevo", "en_preparacion", "listo", "en_camino"];
 
-type AvisoPedido = {
-  id: string;
-  numero: number;
-  tipo: TipoPedido;
-  origen: Pedido["origen"];
-  mesa: number | null;
-  cliente: string;
-  total: number;
+const variantesWrap: Variants = {
+  oculto: { height: 0, opacity: 0, overflow: "hidden" },
+  visible: { height: "auto", opacity: 1, overflow: "hidden" },
+  salida: { height: 0, opacity: 0, overflow: "hidden" },
 };
-
-type PayloadPedido = {
-  eventType: string;
-  new: {
-    id?: unknown;
-    numero?: unknown;
-    tipo?: unknown;
-    origen?: unknown;
-    mesa?: unknown;
-    cliente_nombre?: unknown;
-    total?: unknown;
-  };
-};
-
-function Aviso({
-  aviso,
-  onCerrar,
-}: {
-  aviso: AvisoPedido;
-  onCerrar: (id: string) => void;
-}) {
-  useEffect(() => {
-    const temporizador = window.setTimeout(() => onCerrar(aviso.id), 6000);
-    return () => window.clearTimeout(temporizador);
-  }, [aviso.id, onCerrar]);
-
-  return (
-    <motion.div
-      layout
-      variants={entradaSalida}
-      initial="oculto"
-      animate="visible"
-      exit="salida"
-      transition={transicionSuave}
-      className={styles.aviso}
-    >
-      <div className={styles.avisoCuerpo}>
-        <strong>Pedido #{aviso.numero}</strong>
-        <span>
-          {aviso.tipo === "domicilio"
-            ? "Domicilio"
-            : aviso.mesa != null
-              ? `Mesa ${aviso.mesa}`
-              : "Restaurante"}
-          {aviso.origen === "mesero" ? " · Mesero" : ""} · {aviso.cliente}
-        </span>
-      </div>
-      <strong>{formatearPrecio(aviso.total)}</strong>
-      <button
-        type="button"
-        className={styles.avisoCerrar}
-        onClick={() => onCerrar(aviso.id)}
-        aria-label="Cerrar aviso"
-      >
-        ×
-      </button>
-    </motion.div>
-  );
-}
-
-function Avisos({
-  avisos,
-  onCerrar,
-}: {
-  avisos: AvisoPedido[];
-  onCerrar: (id: string) => void;
-}) {
-  const audioRef = useRef<AudioContext | null>(null);
-  const vistosRef = useRef<Set<string>>(new Set());
-  const [sonido, setSonido] = useState(true);
-
-  useEffect(() => {
-    function desbloquear() {
-      if (
-        (!audioRef.current || audioRef.current.state === "closed") &&
-        window.AudioContext
-      ) {
-        audioRef.current = new window.AudioContext();
-      }
-      if (audioRef.current?.state === "suspended") {
-        void audioRef.current.resume().catch(() => {});
-      }
-    }
-
-    window.addEventListener("pointerdown", desbloquear);
-    window.addEventListener("keydown", desbloquear);
-    return () => {
-      window.removeEventListener("pointerdown", desbloquear);
-      window.removeEventListener("keydown", desbloquear);
-      const contexto = audioRef.current;
-      if (contexto && contexto.state !== "closed") {
-        void contexto.close().catch(() => {});
-      }
-      audioRef.current = null;
-    };
-  }, []);
-
-  const reproducir = useCallback(() => {
-    const contexto = audioRef.current;
-    if (!contexto || contexto.state === "closed") return;
-    if (contexto.state === "suspended") {
-      void contexto.resume().catch(() => {});
-    }
-
-    const inicio = contexto.currentTime;
-    [880, 1174].forEach((frecuencia, indice) => {
-      const oscilador = contexto.createOscillator();
-      const ganancia = contexto.createGain();
-      const momento = inicio + indice * 0.16;
-
-      oscilador.type = "sine";
-      oscilador.frequency.value = frecuencia;
-      ganancia.gain.setValueAtTime(0.0001, momento);
-      ganancia.gain.exponentialRampToValueAtTime(0.12, momento + 0.02);
-      ganancia.gain.exponentialRampToValueAtTime(0.0001, momento + 0.13);
-      oscilador.connect(ganancia);
-      ganancia.connect(contexto.destination);
-      oscilador.start(momento);
-      oscilador.stop(momento + 0.14);
-    });
-  }, []);
-
-  useEffect(() => {
-    for (const aviso of avisos) {
-      if (vistosRef.current.has(aviso.id)) continue;
-      vistosRef.current.add(aviso.id);
-      if (sonido) reproducir();
-    }
-  }, [avisos, reproducir, sonido]);
-
-  return (
-    <div className={styles.avisos}>
-      <button
-        type="button"
-        className={styles.avisoSonido}
-        onClick={() => setSonido((actual) => !actual)}
-        aria-label={sonido ? "Silenciar avisos" : "Activar sonido de avisos"}
-      >
-        {sonido ? "Sonido on" : "Sonido off"}
-      </button>
-      <AnimatePresence initial={false}>
-        {avisos.map((aviso) => (
-          <Aviso key={aviso.id} aviso={aviso} onCerrar={onCerrar} />
-        ))}
-      </AnimatePresence>
-    </div>
-  );
-}
 
 export default function PedidosCliente({
   pedidos,
@@ -203,108 +49,32 @@ export default function PedidosCliente({
   mesasCerradas: MesaCerrada[];
 }) {
   const router = useRouter();
+  const { sonido, alternarSonido } = useAvisos();
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [soloActivos, setSoloActivos] = useState(true);
   const [procesando, setProcesando] = useState<string | null>(null);
   const [cerrandoMesa, setCerrandoMesa] = useState<number | null>(null);
   const [limpiando, setLimpiando] = useState(false);
+  const [mesaSeleccionada, setMesaSeleccionada] = useState<number | null>(null);
+  const [mesasExpandidas, setMesasExpandidas] = useState(false);
   const [mesasPrevias, setMesasPrevias] = useState(mesasAbiertas);
   const [mesasOverride, setMesasOverride] = useState<MesaAbierta[] | null>(
     null,
   );
   const [, startTransition] = useTransition();
-  const [avisos, setAvisos] = useState<AvisoPedido[]>([]);
-  const pedidosVistosRef = useRef<Set<string>>(new Set());
-
-  const cerrarAviso = useCallback((id: string) => {
-    setAvisos((actuales) => actuales.filter((aviso) => aviso.id !== id));
-  }, []);
 
   if (mesasAbiertas !== mesasPrevias) {
     setMesasPrevias(mesasAbiertas);
     setMesasOverride(null);
+    if (
+      mesaSeleccionada !== null &&
+      !mesasAbiertas.some((sesion) => sesion.mesa === mesaSeleccionada)
+    ) {
+      setMesaSeleccionada(null);
+    }
   }
 
   const mesasAbiertasLocales = mesasOverride ?? mesasAbiertas;
-
-  useEffect(() => {
-    const supabase = createClient("admin");
-    let activo = true;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-
-    async function suscribir() {
-      const { data } = await supabase.auth.getSession();
-      if (!activo) return;
-
-      if (data.session?.access_token) {
-        supabase.realtime.setAuth(data.session.access_token);
-      }
-
-      channel = supabase
-        .channel("pedidos-live")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "pedidos" },
-          (payload: PayloadPedido) => {
-            router.refresh();
-            if (payload.eventType !== "INSERT") return;
-
-            const fila = payload.new;
-            const id = fila.id;
-            const numero = fila.numero;
-            if (
-              typeof id !== "string" ||
-              typeof numero !== "number" ||
-              pedidosVistosRef.current.has(id)
-            ) {
-              return;
-            }
-            pedidosVistosRef.current.add(id);
-
-            setAvisos((actuales) => [
-              ...actuales,
-              {
-                id,
-                numero,
-                tipo: fila.tipo === "domicilio" ? "domicilio" : "restaurante",
-                origen: fila.origen === "mesero" ? "mesero" : "cliente",
-                mesa: typeof fila.mesa === "number" ? fila.mesa : null,
-                cliente:
-                  typeof fila.cliente_nombre === "string"
-                    ? fila.cliente_nombre
-                    : "Cliente",
-                total: typeof fila.total === "number" ? fila.total : 0,
-              },
-            ]);
-          },
-        )
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "mesas_abiertas" },
-          () => router.refresh(),
-        )
-        .subscribe((status: string) => {
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.warn("[admin realtime]", status);
-          }
-        });
-    }
-
-    function alVolver() {
-      if (document.visibilityState === "visible") {
-        router.refresh();
-      }
-    }
-
-    void suscribir();
-    document.addEventListener("visibilitychange", alVolver);
-
-    return () => {
-      activo = false;
-      document.removeEventListener("visibilitychange", alVolver);
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [router]);
 
   const visibles = useMemo(() => {
     let lista = pedidos;
@@ -346,6 +116,14 @@ export default function PedidosCliente({
         ),
       }));
   }, [visibles]);
+
+  const gruposVisibles = useMemo(
+    () =>
+      mesaSeleccionada === null
+        ? gruposMesa
+        : gruposMesa.filter(({ mesa }) => mesa === mesaSeleccionada),
+    [gruposMesa, mesaSeleccionada],
+  );
 
   const idsCerrados = useMemo(
     () =>
@@ -459,6 +237,17 @@ export default function PedidosCliente({
     });
   }
 
+  function seleccionarMesa(mesa: number) {
+    if (mesaSeleccionada === mesa) {
+      setMesaSeleccionada(null);
+      setMesasExpandidas(false);
+      return;
+    }
+
+    setMesaSeleccionada(mesa);
+    setMesasExpandidas(true);
+  }
+
   function onCerrarMesa(mesa: number) {
     if (
       !confirm(
@@ -478,6 +267,7 @@ export default function PedidosCliente({
       setMesasOverride((actuales) =>
         (actuales ?? mesasAbiertas).filter((sesion) => sesion.mesa !== mesa),
       );
+      setMesaSeleccionada((actual) => (actual === mesa ? null : actual));
       router.refresh();
       setCerrandoMesa(null);
     });
@@ -525,7 +315,6 @@ export default function PedidosCliente({
     return (
       <motion.article
         key={pedido.id}
-        layout
         variants={entradaSalida}
         initial="oculto"
         animate="visible"
@@ -587,7 +376,6 @@ export default function PedidosCliente({
             {pedido.pedido_items.map((item) => (
               <motion.li
                 key={item.id}
-                layout
                 variants={entradaSalida}
                 initial="oculto"
                 animate="visible"
@@ -634,8 +422,10 @@ export default function PedidosCliente({
                 disabled={procesando === pedido.id}
                 onClick={() => onCancelar(pedido)}
                 className={`${styles.accion} ${styles.accionCancelar}`}
+                aria-label={`Cancelar pedido #${pedido.numero}`}
               >
-                Cancelar
+                <IconoCancelar />
+                <span className={styles.textoAccion}>Cancelar</span>
               </button>
             ) : null}
             <ImpresionPedido pedido={pedido} className={styles.accion} />
@@ -645,8 +435,10 @@ export default function PedidosCliente({
                 disabled={procesando === pedido.id}
                 onClick={() => onEliminar(pedido)}
                 className={`${styles.accion} ${styles.accionEliminar}`}
+                aria-label={`Eliminar pedido #${pedido.numero}`}
               >
-                Eliminar
+                <IconoEliminar />
+                <span className={styles.textoAccion}>Eliminar</span>
               </button>
             ) : null}
           </div>
@@ -657,20 +449,29 @@ export default function PedidosCliente({
 
   return (
     <div className={styles.page}>
-      <Avisos avisos={avisos} onCerrar={cerrarAviso} />
       <div className={styles.head}>
         <div>
           <h1 className={styles.title}>Pedidos</h1>
           <p className={styles.subtitle}>Se actualizan en vivo.</p>
         </div>
-        <label className={styles.toggle}>
-          <input
-            type="checkbox"
-            checked={soloActivos}
-            onChange={(e) => setSoloActivos(e.target.checked)}
-          />
-          <span>Solo activos</span>
-        </label>
+        <div className={styles.headControles}>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={soloActivos}
+              onChange={(e) => setSoloActivos(e.target.checked)}
+            />
+            <span>Solo activos</span>
+          </label>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={sonido}
+              onChange={alternarSonido}
+            />
+            <span>{sonido ? "Sonido on" : "Sonido off"}</span>
+          </label>
+        </div>
       </div>
 
       <div className={styles.tabs} role="group" aria-label="Filtrar pedidos">
@@ -680,7 +481,10 @@ export default function PedidosCliente({
               key={t}
               type="button"
               className={`${styles.tab} ${filtro === t ? styles.tabActive : ""}`}
-              onClick={() => setFiltro(t)}
+              onClick={() => {
+                setFiltro(t);
+                if (t === "domicilio") setMesaSeleccionada(null);
+              }}
               aria-pressed={filtro === t}
             >
               {t === "todos" ? (
@@ -706,31 +510,63 @@ export default function PedidosCliente({
 
       {mesasResumen.length > 0 ? (
         <section className={styles.mesasAbiertas} aria-label="Mesas abiertas">
-          <h2 className={styles.seccionTitulo}>Mesas abiertas</h2>
+          <div className={styles.mesasAbiertasHead}>
+            <h2 className={styles.seccionTitulo}>Mesas abiertas</h2>
+            <div className={styles.mesasAcciones}>
+              {mesaSeleccionada !== null ? (
+                <button
+                  type="button"
+                  className={styles.controlMesas}
+                  onClick={() => setMesaSeleccionada(null)}
+                >
+                  Ver todas
+                </button>
+              ) : null}
+            </div>
+          </div>
           <div className={styles.abiertasGrid}>
             <AnimatePresence initial={false}>
               {mesasResumen.map((sesion) => (
                 <motion.article
                   key={sesion.id}
-                  layout
                   variants={entradaSalida}
                   initial="oculto"
                   animate="visible"
                   exit="salida"
                   transition={transicionSuave}
-                  className={styles.abiertaCard}
+                  className={`${styles.abiertaCard} ${
+                    mesaSeleccionada === sesion.mesa
+                      ? styles.abiertaCardSeleccionada
+                      : ""
+                  }`}
                 >
-                  <div className={styles.abiertaInfo}>
-                    <strong>Mesa {sesion.mesa}</strong>
-                    <span>{sesion.mesero_nombre}</span>
-                    <span>
-                      {sesion.tickets > 0
-                        ? `${sesion.tickets} ${
-                            sesion.tickets === 1 ? "ticket" : "tickets"
-                          } · ${formatearPrecio(sesion.total)}`
-                        : "Sin pedidos todavía"}
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    className={styles.abiertaSeleccion}
+                    onClick={() => seleccionarMesa(sesion.mesa)}
+                    aria-pressed={mesaSeleccionada === sesion.mesa}
+                    aria-expanded={
+                      mesasExpandidas && mesaSeleccionada === sesion.mesa
+                    }
+                    aria-controls="mesas-tickets"
+                    aria-label={`${
+                      mesasExpandidas && mesaSeleccionada === sesion.mesa
+                        ? "Ocultar"
+                        : "Ver"
+                    } tickets de la mesa ${sesion.mesa}`}
+                  >
+                    <div className={styles.abiertaInfo}>
+                      <strong>Mesa {sesion.mesa}</strong>
+                      <span>{sesion.mesero_nombre}</span>
+                      <span>
+                        {sesion.tickets > 0
+                          ? `${sesion.tickets} ${
+                              sesion.tickets === 1 ? "ticket" : "tickets"
+                            } · ${formatearPrecio(sesion.total)}`
+                          : "Sin pedidos todavía"}
+                      </span>
+                    </div>
+                  </button>
                   <button
                     type="button"
                     className={styles.cerrarMesa}
@@ -750,61 +586,98 @@ export default function PedidosCliente({
         <p className={styles.empty}>No hay pedidos por aquí.</p>
       ) : (
         <>
-          {gruposMesa.length > 0 ? (
-            <div className={styles.mesas}>
-              <AnimatePresence initial={false}>
-                {gruposMesa.map(({ mesa, tickets }) => {
-                  const totalMesa = tickets.reduce(
-                    (acc, t) => acc + t.total,
-                    0,
-                  );
-                  return (
-                    <motion.section
-                      key={mesa}
-                      layout
-                      variants={entradaSalida}
+          <div id="mesas-tickets">
+            <AnimatePresence initial={false}>
+              {mesasExpandidas ? (
+                <motion.div
+                  key="mesas-wrap"
+                  variants={variantesWrap}
+                  initial="oculto"
+                  animate="visible"
+                  exit="salida"
+                  transition={transicionSuave}
+                  className={styles.mesasWrap}
+                >
+                  <AnimatePresence initial={false} mode="wait">
+                    <motion.div
+                      key={mesaSeleccionada ?? "todas"}
+                      variants={entradaPantalla}
                       initial="oculto"
                       animate="visible"
                       exit="salida"
                       transition={transicionSuave}
-                      className={styles.mesa}
+                      className={styles.mesas}
                     >
-                      <header className={styles.mesaHead}>
-                        <div className={styles.mesaInfo}>
-                          <h2 className={styles.mesaTitulo}>Mesa {mesa}</h2>
-                          <span className={styles.mesaMeta}>
-                            {tickets.length}{" "}
-                            {tickets.length === 1 ? "ticket" : "tickets"}
-                          </span>
-                        </div>
-                        <div className={styles.mesaAcciones}>
-                          <span className={styles.mesaTotal}>
-                            Total mesa:{" "}
-                            <strong>{formatearPrecio(totalMesa)}</strong>
-                          </span>
-                          <button
-                            type="button"
-                            className={styles.cerrarMesa}
-                            disabled={cerrandoMesa === mesa}
-                            onClick={() => onCerrarMesa(mesa)}
-                          >
-                            {cerrandoMesa === mesa
-                              ? "Cerrando…"
-                              : "Cerrar mesa"}
-                          </button>
-                        </div>
-                      </header>
-                      <div className={styles.grid}>
+                      {gruposVisibles.length > 0 ? (
                         <AnimatePresence initial={false}>
-                          {tickets.map((pedido) => renderPedido(pedido))}
+                          {gruposVisibles.map(({ mesa, tickets }) => {
+                            const totalMesa = tickets.reduce(
+                              (acc, t) => acc + t.total,
+                              0,
+                            );
+                            return (
+                              <motion.section
+                                key={mesa}
+                                variants={entradaSalida}
+                                initial="oculto"
+                                animate="visible"
+                                exit="salida"
+                                transition={transicionSuave}
+                                className={styles.mesa}
+                              >
+                                <header className={styles.mesaHead}>
+                                  <div className={styles.mesaInfo}>
+                                    <h2 className={styles.mesaTitulo}>
+                                      Mesa {mesa}
+                                    </h2>
+                                    <span className={styles.mesaMeta}>
+                                      {tickets.length}{" "}
+                                      {tickets.length === 1
+                                        ? "ticket"
+                                        : "tickets"}
+                                    </span>
+                                  </div>
+                                  <div className={styles.mesaAcciones}>
+                                    <span className={styles.mesaTotal}>
+                                      Total mesa:{" "}
+                                      <strong>{formatearPrecio(totalMesa)}</strong>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className={styles.cerrarMesa}
+                                      disabled={cerrandoMesa === mesa}
+                                      onClick={() => onCerrarMesa(mesa)}
+                                    >
+                                      {cerrandoMesa === mesa
+                                        ? "Cerrando…"
+                                        : "Cerrar mesa"}
+                                    </button>
+                                  </div>
+                                </header>
+                                <div className={styles.grid}>
+                                  <AnimatePresence initial={false}>
+                                    {tickets.map((pedido) =>
+                                      renderPedido(pedido),
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              </motion.section>
+                            );
+                          })}
                         </AnimatePresence>
-                      </div>
-                    </motion.section>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-          ) : null}
+                      ) : (
+                        <p className={styles.empty}>
+                          {mesaSeleccionada !== null
+                            ? "Esta mesa todavía no tiene tickets."
+                            : "No hay tickets de mesa activos."}
+                        </p>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
 
           {domicilio.length > 0 ? (
             <div className={styles.bloque}>
@@ -859,7 +732,6 @@ export default function PedidosCliente({
                     return (
                       <motion.section
                         key={sesion.id}
-                        layout
                         variants={entradaSalida}
                         initial="oculto"
                         animate="visible"
